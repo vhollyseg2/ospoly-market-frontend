@@ -1,6 +1,9 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 
+// Backend API URL - Use absolute URL for production
+const API_URL = 'https://ospoly-market-api.onrender.com'
+
 // Alibaba Orange Theme
 const colors = {
   primary: '#FF7300',
@@ -27,7 +30,7 @@ const AuthProvider = ({ children }) => {
     try {
       const token = localStorage.getItem('accessToken')
       if (!token) { setLoading(false); return }
-      const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (data.success) setUser(data.data.user)
       else localStorage.removeItem('accessToken')
@@ -39,20 +42,20 @@ const AuthProvider = ({ children }) => {
   
   const login = async (email, password) => {
     try {
-      const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+      const res = await fetch(`${API_URL}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
       const data = await res.json()
       if (data.success) { localStorage.setItem('accessToken', data.data.accessToken); setUser(data.data.user); return { success: true } }
       return { success: false, message: data.message }
-    } catch (e) { return { success: false, message: 'Network error. Please check your connection.' } }
+    } catch (e) { return { success: false, message: 'Cannot connect to server. Please check your internet connection.' } }
   }
   
   const register = async (userData) => {
     try {
-      const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) })
+      const res = await fetch(`${API_URL}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) })
       const data = await res.json()
       if (data.success) { localStorage.setItem('accessToken', data.data.accessToken); setUser(data.data.user); return { success: true } }
       return { success: false, message: data.message }
-    } catch (e) { return { success: false, message: 'Network error. Please check your connection.' } }
+    } catch (e) { return { success: false, message: 'Cannot connect to server. Please check your internet connection.' } }
   }
   
   const logout = () => { localStorage.removeItem('accessToken'); setUser(null); window.location.href = '/' }
@@ -69,7 +72,7 @@ const CartProvider = ({ children }) => {
     const token = localStorage.getItem('accessToken')
     if (!token) return
     try {
-      const res = await fetch('/api/cart', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch(`${API_URL}/api/cart`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (data.success) { setItems(data.data.cart?.items || []); setSummary(data.data.summary) }
     } catch {}
@@ -79,17 +82,17 @@ const CartProvider = ({ children }) => {
     const token = localStorage.getItem('accessToken')
     if (!token) return { success: false, message: 'Please login first' }
     try {
-      const res = await fetch('/api/cart/add', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ productId, quantity }) })
+      const res = await fetch(`${API_URL}/api/cart/add`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ productId, quantity }) })
       const data = await res.json()
       if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary); return { success: true } }
       return { success: false, message: data.message }
-    } catch { return { success: false, message: 'Network error' } }
+    } catch { return { success: false, message: 'Cannot connect to server' } }
   }
   
   const removeFromCart = async (productId) => {
     const token = localStorage.getItem('accessToken')
     try {
-      const res = await fetch(`/api/cart/remove/${productId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch(`${API_URL}/api/cart/remove/${productId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary) }
     } catch {}
@@ -99,7 +102,7 @@ const CartProvider = ({ children }) => {
     if (quantity < 1) { removeFromCart(productId); return }
     const token = localStorage.getItem('accessToken')
     try {
-      const res = await fetch('/api/cart/update', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ productId, quantity }) })
+      const res = await fetch(`${API_URL}/api/cart/update`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ productId, quantity }) })
       const data = await res.json()
       if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary) }
     } catch {}
@@ -108,7 +111,7 @@ const CartProvider = ({ children }) => {
   const clearCart = async () => {
     const token = localStorage.getItem('accessToken')
     try {
-      await fetch('/api/cart/clear', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      await fetch(`${API_URL}/api/cart/clear`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       setItems([]); setSummary({ itemCount: 0, subtotal: 0, shipping: 500, total: 500 })
     } catch {}
   }
@@ -146,23 +149,16 @@ const Header = () => {
   const [toast, setToast] = useState(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Get current category from URL
   const searchParams = new URLSearchParams(location.search)
   const currentCategory = searchParams.get('category') || ''
   const currentSearch = searchParams.get('search') || ''
 
-  // Update search query from URL
-  useEffect(() => {
-    setSearchQuery(currentSearch)
-  }, [currentSearch])
+  useEffect(() => { setSearchQuery(currentSearch) }, [currentSearch])
 
   const handleSearch = (e) => {
     e.preventDefault()
-    if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`)
-    } else {
-      navigate('/products')
-    }
+    if (searchQuery.trim()) navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`)
+    else navigate('/products')
   }
 
   const handleLogout = () => {
@@ -179,7 +175,6 @@ const Header = () => {
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <header className="bg-white shadow-sm sticky top-0 z-50">
-        {/* Top Bar - Hidden on mobile */}
         <div className="hidden md:block" style={{ backgroundColor: colors.dark }}>
           <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto">
             <div className="flex items-center gap-4 text-white text-xs">
@@ -202,16 +197,11 @@ const Header = () => {
           </div>
         </div>
         
-        {/* Main Header */}
         <div style={{ backgroundColor: colors.primary }}>
           <div className="px-4 py-3">
             <div className="flex items-center gap-4">
-              {/* Mobile Menu Button */}
-              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white text-2xl">
-                {mobileMenuOpen ? '✕' : '☰'}
-              </button>
+              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white text-2xl">{mobileMenuOpen ? '✕' : '☰'}</button>
               
-              {/* Logo */}
               <Link to="/" className="flex items-center gap-2 flex-shrink-0">
                 <div className="bg-white rounded-lg px-3 py-2">
                   <span style={{ color: colors.primary }} className="font-bold text-lg sm:text-xl">OM</span>
@@ -222,47 +212,30 @@ const Header = () => {
                 </div>
               </Link>
               
-              {/* Search Bar */}
               <form onSubmit={handleSearch} className="flex-1 max-w-xl sm:max-w-2xl">
                 <div className="flex">
-                  <input 
-                    type="text" 
-                    value={searchQuery} 
-                    onChange={(e) => setSearchQuery(e.target.value)} 
-                    placeholder="Search products..." 
-                    className="flex-1 px-3 sm:px-4 py-2 sm:py-3 rounded-l-lg text-sm focus:outline-none w-full"
-                  />
-                  <button type="submit" className="px-4 sm:px-6 py-2 sm:py-3 bg-red-600 text-white font-bold rounded-r-lg hover:bg-red-700 transition-colors text-sm">
-                    Search
-                  </button>
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search products..." className="flex-1 px-3 sm:px-4 py-2 sm:py-3 rounded-l-lg text-sm focus:outline-none w-full" />
+                  <button type="submit" className="px-4 sm:px-6 py-2 sm:py-3 bg-red-600 text-white font-bold rounded-r-lg hover:bg-red-700 transition-colors text-sm">Search</button>
                 </div>
               </form>
               
-              {/* Cart - Desktop */}
               <Link to="/cart" className="relative hidden sm:flex items-center gap-2 text-white">
                 <div className="bg-red-600 rounded-lg px-3 py-2"><span className="text-lg">🛒</span></div>
                 {summary.itemCount > 0 && <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{summary.itemCount}</span>}
               </Link>
               
-              {/* User - Desktop */}
               {isAuthenticated ? (
-                <div className="hidden md:flex items-center gap-2 text-white">
-                  <span className="text-sm">{user?.name}</span>
-                </div>
+                <div className="hidden md:flex items-center gap-2 text-white"><span className="text-sm">{user?.name}</span></div>
               ) : (
-                <Link to="/login" className="hidden md:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">
-                  Sign In
-                </Link>
+                <Link to="/login" className="hidden md:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">Sign In</Link>
               )}
             </div>
           </div>
         </div>
         
-        {/* Mobile Cart & User */}
         <div className="sm:hidden flex items-center justify-between px-4 py-2 bg-gray-50 border-t">
           <Link to="/cart" className="flex items-center gap-2 text-gray-700">
-            <span>🛒</span>
-            <span className="text-sm">Cart</span>
+            <span>🛒</span><span className="text-sm">Cart</span>
             {summary.itemCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{summary.itemCount}</span>}
           </Link>
           {isAuthenticated ? (
@@ -275,41 +248,23 @@ const Header = () => {
           )}
         </div>
         
-        {/* Category Navigation */}
         <div style={{ backgroundColor: colors.white, borderBottom: `1px solid ${colors.border}` }} className="overflow-x-auto">
           <div className="px-4 flex items-center gap-1 py-2 min-w-max">
-            <Link to="/products" className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${!currentCategory ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              All
-            </Link>
-            <button onClick={() => handleCategoryClick('phones-accessories')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'phones-accessories' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              📱 Phones
-            </button>
-            <button onClick={() => handleCategoryClick('electronics')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'electronics' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              🎧 Electronics
-            </button>
-            <button onClick={() => handleCategoryClick('furniture')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'furniture' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              🪑 Furniture
-            </button>
-            <button onClick={() => handleCategoryClick('fashion')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'fashion' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              👕 Fashion
-            </button>
-            <button onClick={() => handleCategoryClick('kitchen-home')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'kitchen-home' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>
-              🏠 Apartment
-            </button>
+            <Link to="/products" className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${!currentCategory ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>All</Link>
+            <button onClick={() => handleCategoryClick('phones-accessories')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'phones-accessories' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>📱 Phones</button>
+            <button onClick={() => handleCategoryClick('electronics')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'electronics' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>🎧 Electronics</button>
+            <button onClick={() => handleCategoryClick('furniture')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'furniture' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>🪑 Furniture</button>
+            <button onClick={() => handleCategoryClick('fashion')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'fashion' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>👕 Fashion</button>
+            <button onClick={() => handleCategoryClick('kitchen-home')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === 'kitchen-home' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'}`}>🏠 Apartment</button>
             {(user?.role === 'seller' || user?.role === 'admin') && (
-              <Link to="/seller" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-orange-600 whitespace-nowrap">
-                🏪 Seller
-              </Link>
+              <Link to="/seller" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-orange-600 whitespace-nowrap">🏪 Seller</Link>
             )}
             {user?.role === 'admin' && (
-              <Link to="/admin" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-purple-600 whitespace-nowrap">
-                ⚙️ Admin
-              </Link>
+              <Link to="/admin" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-purple-600 whitespace-nowrap">⚙️ Admin</Link>
             )}
           </div>
         </div>
         
-        {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t p-4 space-y-2">
             <Link to="/" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">Home</Link>
@@ -321,9 +276,6 @@ const Header = () => {
             <button onClick={() => handleCategoryClick('kitchen-home')} className="block py-2 text-gray-700 w-full text-left">🏠 Apartment</button>
             <Link to="/orders" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">📦 My Orders</Link>
             <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">👤 Profile</Link>
-            {(user?.role === 'seller' || user?.role === 'admin') && (
-              <Link to="/seller" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-orange-600">🏪 Seller Dashboard</Link>
-            )}
           </div>
         )}
       </header>
@@ -370,9 +322,7 @@ const ProductCard = ({ product }) => {
             <span className="hidden sm:inline">|</span>
             <span>{product.reviewCount || 0} sold</span>
           </div>
-          <button onClick={handleAddToCart} className="w-full py-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded hover:bg-orange-600 transition-colors">
-            Add to Cart
-          </button>
+          <button onClick={handleAddToCart} className="w-full py-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded hover:bg-orange-600 transition-colors">Add to Cart</button>
         </div>
       </div>
     </>
@@ -396,13 +346,13 @@ const HomePage = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/products?limit=20').then(r => r.json()),
-      fetch('/api/products/flash-deals').then(r => r.json()),
-      fetch('/api/products?category=phones-accessories&limit=4').then(r => r.json()),
-      fetch('/api/products?category=electronics&limit=4').then(r => r.json()),
-      fetch('/api/products?category=furniture&limit=4').then(r => r.json()),
-      fetch('/api/products?category=fashion&limit=4').then(r => r.json()),
-      fetch('/api/products?category=kitchen-home&limit=4').then(r => r.json()),
+      fetch(`${API_URL}/api/products?limit=20`).then(r => r.json()),
+      fetch(`${API_URL}/api/products/flash-deals`).then(r => r.json()),
+      fetch(`${API_URL}/api/products?category=phones-accessories&limit=4`).then(r => r.json()),
+      fetch(`${API_URL}/api/products?category=electronics&limit=4`).then(r => r.json()),
+      fetch(`${API_URL}/api/products?category=furniture&limit=4`).then(r => r.json()),
+      fetch(`${API_URL}/api/products?category=fashion&limit=4`).then(r => r.json()),
+      fetch(`${API_URL}/api/products?category=kitchen-home&limit=4`).then(r => r.json()),
     ]).then(([productsData, dealsData, phonesData, electronicsData, furnitureData, fashionData, homeData]) => {
       if (productsData.success) setProducts(productsData.data.products)
       if (dealsData.success) setFlashDeals(dealsData.data.products)
@@ -419,7 +369,6 @@ const HomePage = () => {
 
   return (
     <div className="bg-gray-100 min-h-screen">
-      {/* Hero Section */}
       <div style={{ background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)` }} className="py-8 sm:py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-6 sm:gap-8 items-center">
@@ -444,15 +393,12 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Flash Deals */}
       {flashDeals.length > 0 && (
         <div className="py-6 sm:py-8 bg-white">
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <div className="flex items-center gap-2 sm:gap-4">
-                <div className="bg-red-500 text-white px-3 sm:px-4 py-2 rounded font-bold flex items-center gap-1 sm:gap-2 text-sm sm:text-base">
-                  <span>⚡</span> FLASH DEALS
-                </div>
+                <div className="bg-red-500 text-white px-3 sm:px-4 py-2 rounded font-bold flex items-center gap-1 sm:gap-2 text-sm sm:text-base"><span>⚡</span> FLASH DEALS</div>
               </div>
               <button onClick={() => navigate('/products?flash=true')} className="text-orange-600 font-medium hover:underline text-sm">View All →</button>
             </div>
@@ -463,7 +409,6 @@ const HomePage = () => {
         </div>
       )}
 
-      {/* Category Sections */}
       {Object.entries(categoryProducts).map(([category, prods]) => (
         prods.length > 0 && (
           <div key={category} className="py-6 sm:py-8">
@@ -484,7 +429,6 @@ const HomePage = () => {
         )
       ))}
 
-      {/* All Featured Products */}
       <div className="py-6 sm:py-8">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -499,7 +443,6 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Why Choose Us */}
       <div className="py-6 sm:py-8 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">Why Choose Ospoly Market</h2>
@@ -531,7 +474,7 @@ const ProductsPage = () => {
 
   useEffect(() => {
     setLoading(true)
-    let url = '/api/products?limit=40'
+    let url = `${API_URL}/api/products?limit=40`
     if (category) url += `&category=${category}`
     if (search) url += `&search=${search}`
     fetch(url).then(r => r.json()).then(d => { if (d.success) setProducts(d.data.products); setLoading(false) })
@@ -549,8 +492,7 @@ const ProductsPage = () => {
     <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 bg-white p-3 rounded-lg flex-wrap">
-          <button onClick={() => navigate('/')} className="hover:text-orange-600">Home</button>
-          <span>/</span>
+          <button onClick={() => navigate('/')} className="hover:text-orange-600">Home</button><span>/</span>
           <button onClick={() => navigate('/products')} className="hover:text-orange-600">Products</button>
           {(category || search) && <><span>/</span><span className="text-gray-800">{getCategoryName()}</span></>}
         </div>
@@ -591,7 +533,7 @@ const ProductDetailPage = () => {
   const id = window.location.pathname.split('/').pop()
 
   useEffect(() => {
-    fetch(`/api/products/${id}`).then(r => r.json()).then(d => { if (d.success) setProduct(d.data.product); setLoading(false) })
+    fetch(`${API_URL}/api/products/${id}`).then(r => r.json()).then(d => { if (d.success) setProduct(d.data.product); setLoading(false) })
   }, [id])
 
   const handleAddToCart = async () => {
@@ -770,7 +712,7 @@ const CheckoutPage = () => {
     }
     setLoading(true)
     try {
-      const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ shippingAddress: address }) })
+      const res = await fetch(`${API_URL}/api/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ shippingAddress: address }) })
       const data = await res.json()
       setLoading(false)
       if (data.success) { 
@@ -780,7 +722,7 @@ const CheckoutPage = () => {
       } else {
         setToast({ message: data.message || 'Order failed', type: 'error' })
       }
-    } catch { setLoading(false); setToast({ message: 'Network error', type: 'error' }) }
+    } catch { setLoading(false); setToast({ message: 'Cannot connect to server', type: 'error' }) }
   }
 
   return (
@@ -845,7 +787,7 @@ const MyOrdersPage = () => {
 
   useEffect(() => {
     if (!user) { navigate('/login'); return }
-    fetch('/api/orders', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+    fetch(`${API_URL}/api/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       .then(r => r.json())
       .then(d => { if (d.success) setOrders(d.data.orders); setLoading(false) })
   }, [user, navigate])
@@ -1056,22 +998,21 @@ const SellerDashboard = () => {
 
   useEffect(() => {
     if (!user || (user.role !== 'seller' && user.role !== 'admin')) { window.location.href = '/login'; return }
-    fetch('/api/orders/seller/stats', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json())
-      .then(d => { if (d.success) setStats(d.data) })
-    
-    fetch('/api/products/seller/my-products', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json())
-      .then(d => { if (d.success) setProducts(d.data.products) })
-    
-    fetch('/api/orders/seller/orders', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json())
-      .then(d => { if (d.success) setOrders(d.data.orders); setLoading(false) })
+    Promise.all([
+      fetch(`${API_URL}/api/orders/seller/stats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
+      fetch(`${API_URL}/api/products/seller/my-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
+      fetch(`${API_URL}/api/orders/seller/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
+    ]).then(([statsData, productsData, ordersData]) => {
+      if (statsData.success) setStats(statsData.data)
+      if (productsData.success) setProducts(productsData.data.products)
+      if (ordersData.success) setOrders(ordersData.data.orders)
+      setLoading(false)
+    })
   }, [user])
 
   const handleUpdateStatus = async (orderId, status) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ status }) })
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ status }) })
       const data = await res.json()
       if (data.success) { setToast({ message: 'Order status updated!', type: 'success' }); window.location.reload() }
     } catch { setToast({ message: 'Failed to update', type: 'error' }) }
@@ -1195,7 +1136,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (!user || user.role !== 'admin') { window.location.href = '/login'; return }
-    fetch('/api/admin/dashboard', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+    fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       .then(r => r.json())
       .then(d => { if (d.success) setStats(d.data); setLoading(false) })
   }, [user])
@@ -1277,7 +1218,7 @@ const ProfilePage = () => {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify(form) })
+      const res = await fetch(`${API_URL}/api/auth/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify(form) })
       const data = await res.json()
       setLoading(false)
       if (data.success) { updateUser(data.data.user); setToast({ message: 'Profile updated!', type: 'success' }) }
