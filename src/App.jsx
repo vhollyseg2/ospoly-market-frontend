@@ -29,6 +29,7 @@ const AuthContext = createContext()
 const CartContext = createContext()
 const WishlistContext = createContext()
 const NotificationContext = createContext()
+const ChatContext = createContext()
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
@@ -183,6 +184,45 @@ const NotificationProvider = ({ children }) => {
   )
 }
 
+// Chat Provider for Buyer-Seller-Admin communication
+const ChatProvider = ({ children }) => {
+  const [chats, setChats] = useState({})
+  const [activeChat, setActiveChat] = useState(null)
+  const { user } = useContext(AuthContext)
+  
+  const fetchChats = async () => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    try {
+      const res = await fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (data.success) setChats(data.data.chats || {})
+    } catch {}
+  }
+  
+  const sendMessage = async (recipientId, message, type = 'buyer_to_seller') => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    try {
+      await fetch(`${API_URL}/api/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ recipientId, message, type })
+      })
+    } catch {}
+  }
+  
+  useEffect(() => {
+    if (user) fetchChats()
+  }, [user])
+  
+  return (
+    <ChatContext.Provider value={{ chats, activeChat, setActiveChat, fetchChats, sendMessage }}>
+      {children}
+    </ChatContext.Provider>
+  )
+}
+
 // Recently Viewed Context (temp)
 const RecentlyViewedContext = createContext()
 
@@ -196,7 +236,21 @@ const CartProvider = ({ children }) => {
     try {
       const res = await fetch(`${API_URL}/api/cart`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (data.success) { setItems(data.data.cart?.items || []); setSummary(data.data.summary) }
+      if (data.success) { 
+        setItems(data.data.cart?.items || [])
+        // Calculate dynamic shipping based on subtotal
+        const subtotal = data.data.summary?.subtotal || 0
+        let shippingFee = 500
+        if (subtotal >= 50000) shippingFee = 0
+        else if (subtotal >= 25000) shippingFee = 250
+        else if (subtotal >= 10000) shippingFee = 350
+        
+        setSummary({
+          ...data.data.summary,
+          shipping: shippingFee,
+          total: (data.data.summary?.subtotal || 0) + shippingFee
+        })
+      }
     } catch {}
   }
   
@@ -210,7 +264,16 @@ const CartProvider = ({ children }) => {
         body: JSON.stringify({ productId, quantity }) 
       })
       const data = await res.json()
-      if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary); return { success: true } }
+      if (data.success) { 
+        setItems(data.data.cart.items)
+        const subtotal = data.data.summary.subtotal
+        let shippingFee = 500
+        if (subtotal >= 50000) shippingFee = 0
+        else if (subtotal >= 25000) shippingFee = 250
+        else if (subtotal >= 10000) shippingFee = 350
+        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+        return { success: true } 
+      }
       return { success: false, message: data.message }
     } catch { return { success: false, message: 'Cannot connect to server' } }
   }
@@ -223,7 +286,15 @@ const CartProvider = ({ children }) => {
         headers: { Authorization: `Bearer ${token}` } 
       })
       const data = await res.json()
-      if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary) }
+      if (data.success) { 
+        setItems(data.data.cart.items)
+        const subtotal = data.data.summary.subtotal
+        let shippingFee = 500
+        if (subtotal >= 50000) shippingFee = 0
+        else if (subtotal >= 25000) shippingFee = 250
+        else if (subtotal >= 10000) shippingFee = 350
+        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+      }
     } catch {}
   }
   
@@ -237,7 +308,15 @@ const CartProvider = ({ children }) => {
         body: JSON.stringify({ productId, quantity }) 
       })
       const data = await res.json()
-      if (data.success) { setItems(data.data.cart.items); setSummary(data.data.summary) }
+      if (data.success) { 
+        setItems(data.data.cart.items)
+        const subtotal = data.data.summary.subtotal
+        let shippingFee = 500
+        if (subtotal >= 50000) shippingFee = 0
+        else if (subtotal >= 25000) shippingFee = 250
+        else if (subtotal >= 10000) shippingFee = 350
+        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+      }
     } catch {}
   }
   
@@ -245,7 +324,8 @@ const CartProvider = ({ children }) => {
     const token = localStorage.getItem('accessToken')
     try {
       await fetch(`${API_URL}/api/cart/clear`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
-      setItems([]); setSummary({ itemCount: 0, subtotal: 0, shipping: 500, total: 500 })
+      setItems([])
+      setSummary({ itemCount: 0, subtotal: 0, shipping: 500, total: 500 })
     } catch {}
   }
   
@@ -263,6 +343,7 @@ const useCart = () => useContext(CartContext)
 const useWishlist = () => useContext(WishlistContext)
 const useRecentlyViewed = () => useContext(RecentlyViewedContext)
 const useNotifications = () => useContext(NotificationContext)
+const useChat = () => useContext(ChatContext)
 
 // Toast Notification
 const Toast = ({ message, type, onClose }) => {
@@ -271,7 +352,7 @@ const Toast = ({ message, type, onClose }) => {
     return () => clearTimeout(timer)
   }, [onClose])
   return (
-    <div className={`fixed bottom-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-up ${
+    <div className={`fixed bottom-4 right-4 z-[9999] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-up ${
       type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : type === 'info' ? 'bg-blue-500' : 'bg-gray-800'
     } text-white max-w-sm`}>
       <span className="text-xl">{type === 'success' ? '✓' : type === 'error' ? '✕' : type === 'warning' ? '⚠️' : 'ℹ'}</span>
@@ -445,8 +526,14 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
     e.preventDefault()
     setLoading(true)
     
-    // Simulate review submission
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    const token = localStorage.getItem('accessToken')
+    try {
+      await fetch(`${API_URL}/api/products/${productId}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rating, title, comment, aspectRatings })
+      })
+    } catch {}
     
     setLoading(false)
     setToast({ message: '✓ Review submitted successfully!', type: 'success' })
@@ -458,7 +545,7 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
   }
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
@@ -548,18 +635,41 @@ const WishlistButton = ({ product, className = '' }) => {
   )
 }
 
-// Secure Payment Modal
-const PaymentModal = ({ isOpen, onClose, amount, orderId, onSuccess }) => {
+// Secure Payment Modal - FIXED with seller name for transfer
+const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess }) => {
+  const { user } = useAuth()
   const [method, setMethod] = useState('card')
   const [loading, setLoading] = useState(false)
   const [cardDetails, setCardDetails] = useState({ number: '', name: '', expiry: '', cvv: '' })
   const [toast, setToast] = useState(null)
   const [showRefundPolicy, setShowRefundPolicy] = useState(false)
   const [transactionId, setTransactionId] = useState(null)
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false)
+  
+  // Get seller name from order items for transfer section
+  const getSellerName = () => {
+    if (orderItems && orderItems.length > 0) {
+      return orderItems[0]?.sellerName || 'the seller'
+    }
+    return 'the seller'
+  }
   
   if (!isOpen) return null
   
   const generateTransactionId = () => 'TXN' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 8).toUpperCase()
+  
+  const verifyPayment = async (txnId) => {
+    const token = localStorage.getItem('accessToken')
+    try {
+      const res = await fetch(`${API_URL}/api/payments/verify/${txnId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      return data.success && data.data?.verified
+    } catch {
+      return false
+    }
+  }
   
   const handlePayment = async () => {
     setLoading(true)
@@ -572,25 +682,70 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, onSuccess }) => {
       }
     }
     
-    await new Promise(resolve => setTimeout(resolve, 2500))
+    // Simulate payment processing
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    
     const newTxnId = generateTransactionId()
     setTransactionId(newTxnId)
-    setLoading(false)
-    setToast({ message: '✓ Payment processed securely!', type: 'success' })
     
-    try {
-      await fetch(`${API_URL}/api/payments/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-        body: JSON.stringify({ orderId, transactionId: newTxnId, amount, method, status: 'completed', timestamp: new Date().toISOString() })
-      })
-    } catch {}
+    // For transfer method, require manual confirmation
+    if (method === 'transfer') {
+      setLoading(false)
+      setToast({ message: 'Transfer to the account below and click "I Have Paid" to confirm', type: 'info' })
+      return
+    }
     
-    setTimeout(() => { onSuccess(); onClose() }, 1500)
+    // For card, simulate verification
+    const verified = await verifyPayment(newTxnId)
+    if (verified) {
+      setPaymentConfirmed(true)
+      try {
+        await fetch(`${API_URL}/api/payments/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+          body: JSON.stringify({ orderId, transactionId: newTxnId, amount, method, status: 'completed', timestamp: new Date().toISOString() })
+        })
+      } catch {}
+      setLoading(false)
+      setToast({ message: '✓ Payment verified and processed!', type: 'success' })
+      setTimeout(() => { onSuccess(); onClose() }, 1500)
+    } else {
+      setLoading(false)
+      setToast({ message: 'Payment verification failed. Please try again.', type: 'error' })
+    }
+  }
+  
+  const handleConfirmTransfer = async () => {
+    if (!transactionId) {
+      setToast({ message: 'Please wait for transaction ID', type: 'error' })
+      return
+    }
+    setLoading(true)
+    
+    // Simulate verification
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    
+    const verified = await verifyPayment(transactionId)
+    if (verified) {
+      setPaymentConfirmed(true)
+      try {
+        await fetch(`${API_URL}/api/payments/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+          body: JSON.stringify({ orderId, transactionId, amount, method: 'transfer', status: 'completed', timestamp: new Date().toISOString() })
+        })
+      } catch {}
+      setLoading(false)
+      setToast({ message: '✓ Transfer confirmed and verified!', type: 'success' })
+      setTimeout(() => { onSuccess(); onClose() }, 1500)
+    } else {
+      setLoading(false)
+      setToast({ message: 'Transfer not yet confirmed. Please verify with your bank.', type: 'error' })
+    }
   }
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
         {toast && <Toast {...toast} onClose={() => setToast(null)} />}
         
@@ -667,9 +822,15 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, onSuccess }) => {
         {method === 'transfer' && (
           <div className="bg-gray-50 p-4 rounded-lg mb-4">
             <p className="text-sm text-gray-600 mb-2">Transfer to:</p>
-            <p className="text-sm font-bold text-gray-800">Ospoly Market - First Bank</p>
+            <p className="text-sm font-bold text-gray-800">{getSellerName()} - First Bank</p>
             <p className="text-lg font-mono text-orange-600">3056789012</p>
-            <p className="text-xs text-gray-500 mt-2">Use order ID as payment reference</p>
+            <p className="text-xs text-gray-500 mt-2">Use order ID as payment reference: #{orderId?.slice(-8).toUpperCase()}</p>
+            {transactionId && !paymentConfirmed && (
+              <button onClick={handleConfirmTransfer} disabled={loading}
+                className="w-full mt-3 py-2 bg-green-500 text-white font-bold rounded hover:bg-green-600 disabled:opacity-50">
+                {loading ? 'Verifying...' : '✓ I Have Paid - Confirm Transfer'}
+              </button>
+            )}
           </div>
         )}
         
@@ -677,15 +838,17 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, onSuccess }) => {
           <div className="bg-gray-50 p-4 rounded-lg mb-4">
             <p className="text-sm text-gray-600 mb-2">Dial this USSD code:</p>
             <p className="text-2xl font-bold text-orange-600">*894#</p>
-            <p className="text-xs text-gray-500 mt-2">Follow the prompts</p>
+            <p className="text-xs text-gray-500 mt-2">Follow the prompts and enter amount: ₦{amount?.toLocaleString()}</p>
           </div>
         )}
         
         {method === 'wallet' && (
           <div className="bg-gray-50 p-4 rounded-lg mb-4">
             <p className="text-sm text-gray-600 mb-2">Pay with Wallet Balance</p>
-            <p className="text-lg font-bold text-gray-800">Available: ₦0.00</p>
-            <p className="text-xs text-gray-500 mt-2">Add funds to wallet to use this method</p>
+            <p className="text-lg font-bold text-gray-800">Available: ₦{(user?.walletBalance || 0).toLocaleString()}</p>
+            {user?.walletBalance < amount && (
+              <p className="text-xs text-red-500 mt-2">Insufficient balance. Please add funds or use another method.</p>
+            )}
           </div>
         )}
         
@@ -706,10 +869,12 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, onSuccess }) => {
           )}
         </div>
         
-        <button onClick={handlePayment} disabled={loading}
-          className="w-full py-4 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-base">
-          {loading ? '🔒 Processing...' : `🔒 Pay ₦${amount?.toLocaleString()} Securely`}
-        </button>
+        {method !== 'transfer' && (
+          <button onClick={handlePayment} disabled={loading || paymentConfirmed}
+            className="w-full py-4 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-base">
+            {loading ? '🔒 Processing...' : paymentConfirmed ? '✓ Payment Complete' : `🔒 Pay ₦${amount?.toLocaleString()} Securely`}
+          </button>
+        )}
         
         <div className="flex items-center justify-center gap-4 mt-4 text-xs text-gray-500">
           <span>🔒 SSL</span><span>✓ PCI</span><span>🛡️ Insured</span>
@@ -759,44 +924,83 @@ const OrderTracker = ({ status }) => {
   )
 }
 
-// Live Chat Component
-const LiveChat = () => {
+// AI Support Chat - FIXED to send to admin/moderator only
+const SupportChat = () => {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
-    { from: 'system', text: '👋 Welcome to Ospoly Market Support! How can we help you today?', time: new Date() }
+    { from: 'system', text: '🤖 AI Assistant: Welcome to Ospoly Market Support! I\'m here to help 24/7. How can I assist you today?', time: new Date() }
   ])
   const [newMessage, setNewMessage] = useState('')
+  const [toast, setToast] = useState(null)
   
   const quickReplies = ['Track my order', 'Return/refund', 'Product inquiry', 'Seller question', 'Payment issue']
+  
+  // AI responses for common questions
+  const getAIResponse = (userMessage) => {
+    const lowerMsg = userMessage.toLowerCase()
+    
+    if (lowerMsg.includes('track') || lowerMsg.includes('order')) {
+      return 'You can track your order from the "My Orders" page in your account. Click on any order to see its current status: Pending → Confirmed → Processing → Shipped → Delivered. Is there a specific order issue I can help with? 📦'
+    }
+    if (lowerMsg.includes('refund') || lowerMsg.includes('return')) {
+      return 'To request a refund: 1) Go to "My Orders", 2) Click "Report Issue" on the order, 3) Describe the problem. Admin will review within 24 hours and process your refund within 3-5 business days. 💸'
+    }
+    if (lowerMsg.includes('payment')) {
+      return 'We accept Card, Bank Transfer, USSD, and Wallet payments. All payments are secured with escrow protection - your money is held safely until delivery is confirmed. 🔒'
+    }
+    if (lowerMsg.includes('seller') || lowerMsg.includes('become')) {
+      return 'To become a seller: 1) Create an account, 2) Register as a seller, 3) Wait for admin approval (usually within 24 hours). Once approved, you can list products from your dashboard! 🚀'
+    }
+    if (lowerMsg.includes('delivery') || lowerMsg.includes('shipping')) {
+      return 'Delivery times vary by location. Lagos: 1-3 days, Other states: 3-5 days. Orders above ₦50,000 get FREE shipping! 🚚'
+    }
+    if (lowerMsg.includes('scam') || lowerMsg.includes('report')) {
+      return 'If you\'ve been scammed, report immediately via "Report Issue" on your order or contact admin at admin@ospolymarket.com within 48 hours for investigation. 🛡️'
+    }
+    if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('help')) {
+      return 'Hello! I\'m your AI support assistant. I can help with: order tracking, refunds, payment issues, seller inquiries, and general questions. What can I help you with? 😊'
+    }
+    
+    return 'Thanks for your message! For specific issues, I\'ll forward this to our admin team who will respond within 1-2 hours. For urgent matters, call 09051103883 📞'
+  }
   
   const handleSend = () => {
     if (!newMessage.trim()) return
     
-    setMessages(prev => [...prev, { from: 'user', text: newMessage, time: new Date() }])
-    
-    // Simulate bot response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        from: 'bot', 
-        text: 'Thanks for your message! Our team will respond shortly. For immediate help, call 09051103883 📞', 
-        time: new Date() 
-      }])
-    }, 1000)
-    
+    const userMsg = newMessage
+    setMessages(prev => [...prev, { from: 'user', text: userMsg, time: new Date() }])
     setNewMessage('')
+    
+    // AI responds immediately
+    setTimeout(() => {
+      const aiResponse = getAIResponse(userMsg)
+      setMessages(prev => [...prev, { from: 'ai', text: aiResponse, time: new Date() }])
+    }, 800)
+    
+    // Forward to admin for serious issues
+    if (userMsg.toLowerCase().includes('scam') || userMsg.toLowerCase().includes('report') || userMsg.toLowerCase().includes('problem')) {
+      const token = localStorage.getItem('accessToken')
+      if (token) {
+        fetch(`${API_URL}/api/support/tickets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ subject: 'User Support Request', message: userMsg, priority: 'high' })
+        }).catch(() => {})
+      }
+    }
   }
   
   return (
     <div className="fixed bottom-20 right-4 z-50">
       {open && (
         <div className="bg-white rounded-xl shadow-2xl w-80 sm:w-96 mb-2 border border-gray-200">
-          <div className="bg-orange-500 text-white p-4 rounded-t-xl flex items-center justify-between">
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-4 rounded-t-xl flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">💬</span>
+              <span className="text-2xl">🤖</span>
               <div>
-                <p className="font-bold">Ospoly Support</p>
-                <p className="text-xs text-orange-100">We typically reply in minutes</p>
+                <p className="font-bold">AI Support</p>
+                <p className="text-xs text-orange-100">Powered by AI + Admin Backup</p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="text-white text-xl">✕</button>
@@ -807,7 +1011,7 @@ const LiveChat = () => {
               <div key={i} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] p-3 rounded-lg text-sm ${
                   msg.from === 'user' ? 'bg-orange-500 text-white' : 
-                  msg.from === 'bot' ? 'bg-white border border-gray-200 text-gray-800' : 
+                  msg.from === 'ai' ? 'bg-white border border-gray-200 text-gray-800' : 
                   'bg-gray-200 text-gray-600 text-center mx-auto'
                 }`}>
                   {msg.text}
@@ -816,7 +1020,7 @@ const LiveChat = () => {
             ))}
           </div>
           
-          <div className="p-2 border-t bg-white">
+          <div className="p-2 border-t bg-white rounded-b-xl">
             <div className="flex flex-wrap gap-1 mb-2">
               {quickReplies.map(reply => (
                 <button key={reply} onClick={() => setNewMessage(reply)}
@@ -839,10 +1043,62 @@ const LiveChat = () => {
       )}
       
       <button onClick={() => setOpen(!open)} 
-        className="w-14 h-14 bg-orange-500 text-white rounded-full shadow-lg flex items-center justify-center text-2xl hover:bg-orange-600 transition-all hover:scale-110">
-        {open ? '✕' : '💬'}
+        className="w-14 h-14 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-lg flex items-center justify-center text-2xl hover:from-orange-600 hover:to-red-600 transition-all hover:scale-110">
+        {open ? '✕' : '🤖'}
         {!open && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping" />}
       </button>
+    </div>
+  )
+}
+
+// Product-Seller Chat Component
+const ProductChat = ({ sellerId, productTitle }) => {
+  const { user } = useAuth()
+  const { sendMessage } = useChat()
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [toast, setToast] = useState(null)
+  
+  const handleSend = async () => {
+    if (!message.trim()) return
+    if (!user) {
+      setToast({ message: 'Please login first', type: 'error' })
+      return
+    }
+    
+    await sendMessage(sellerId, message, 'buyer_to_seller')
+    setToast({ message: '✓ Message sent to seller!', type: 'success' })
+    setMessage('')
+    setOpen(false)
+  }
+  
+  if (!user) return null
+  
+  return (
+    <div>
+      <button onClick={() => setOpen(true)} className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm font-bold rounded hover:bg-blue-600">
+        💬 Chat with Seller
+      </button>
+      
+      {open && (
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800">💬 Chat with Seller</h3>
+              <button onClick={() => setOpen(false)} className="text-gray-500 text-xl">✕</button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Re: {productTitle}</p>
+            <textarea value={message} onChange={e => setMessage(e.target.value)}
+              className="w-full px-4 py-3 border rounded-lg mb-4 text-sm" rows={4}
+              placeholder="Type your message to the seller..." />
+            <div className="flex gap-3">
+              <button onClick={() => setOpen(false)} className="flex-1 py-2 bg-gray-300 text-gray-700 font-bold rounded">Cancel</button>
+              <button onClick={handleSend} className="flex-1 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-600">Send Message</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -880,7 +1136,7 @@ const Header = () => {
       {/* Announcement Bar */}
       <AnnouncementBar />
       
-      <header className="bg-white shadow-sm sticky top-0 z-50">
+      <header className="bg-white shadow-sm sticky top-0 z-40">
         <div className="hidden md:block" style={{ backgroundColor: colors.dark }}>
           <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto">
             <div className="flex items-center gap-4 text-white text-xs">
@@ -1082,7 +1338,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
         )}
         
         {/* Pending Approval Badge */}
-        {!product.isApproved && (
+        {!product.isApproved && user?.role === 'seller' && (
           <div className="absolute top-2 left-2 z-10">
             <div className="bg-yellow-500 text-white px-2 py-1 text-xs font-bold rounded">⏳</div>
           </div>
@@ -1180,7 +1436,7 @@ const RecentlyViewedSection = () => {
 const FlashDealsSection = ({ products }) => {
   const navigate = useNavigate()
   const endTime = new Date()
-  endTime.setHours(endTime.getHours() + 8) // 8 hour countdown
+  endTime.setHours(endTime.getHours() + 8)
   
   return (
     <div className="py-6 sm:py-8 bg-gradient-to-r from-red-600 to-orange-500">
@@ -1208,7 +1464,7 @@ const FlashDealsSection = ({ products }) => {
   )
 }
 
-// Home Page with all features
+// Home Page with Background Image for Hero
 const HomePage = () => {
   const [products, setProducts] = useState([])
   const [flashDeals, setFlashDeals] = useState([])
@@ -1242,9 +1498,17 @@ const HomePage = () => {
 
   return (
     <div className="bg-gray-100 min-h-screen">
-      {/* Hero Section with Professional Images */}
-      <div style={{ background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)` }} className="py-8 sm:py-12 px-4">
-        <div className="max-w-7xl mx-auto">
+      {/* Hero Section with Background Image */}
+      <div 
+        className="py-8 sm:py-12 px-4 relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, rgba(255,115,0,0.9) 0%, rgba(255,85,0,0.9) 100%)`,
+          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="%23ffffff" fill-opacity="0.1" d="M0,160L48,165.3C96,171,192,181,288,186.7C384,192,480,192,576,181.3C672,171,768,149,864,149.3C960,149,1056,171,1152,176C1248,181,1344,171,1392,165.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'bottom'
+        }}
+      >
+        <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid md:grid-cols-2 gap-6 sm:gap-8 items-center">
             <div className="text-white text-center md:text-left">
               <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">
@@ -1318,6 +1582,10 @@ const HomePage = () => {
             </div>
           </div>
         </div>
+        
+        {/* Decorative elements */}
+        <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 right-0 w-48 h-48 bg-white/10 rounded-full translate-x-1/2 translate-y-1/2"></div>
       </div>
 
       {/* Flash Deals */}
@@ -1524,7 +1792,7 @@ const ProductsPage = () => {
   )
 }
 
-// Product Detail Page with Reviews
+// Product Detail Page with Reviews and Chat
 const ProductDetailPage = () => {
   const [product, setProduct] = useState(null)
   const [quantity, setQuantity] = useState(1)
@@ -1716,6 +1984,11 @@ const ProductDetailPage = () => {
                   <WishlistButton product={product} />
                   <span className="text-sm text-gray-500">Add to Wishlist</span>
                 </div>
+                
+                {/* Chat with Seller */}
+                {user && product.seller?._id && (
+                  <ProductChat sellerId={product.seller._id} productTitle={product.title} />
+                )}
               </div>
               
               {/* Supplier Info */}
@@ -1814,7 +2087,7 @@ const ProductDetailPage = () => {
   )
 }
 
-// Cart Page
+// Cart Page with Dynamic Shipping
 const CartPage = () => {
   const { user } = useAuth()
   const { items, summary, removeFromCart, updateQuantity } = useCart()
@@ -1840,6 +2113,16 @@ const CartPage = () => {
       </div>
     </div>
   )
+
+  // Dynamic shipping message
+  const getShippingMessage = () => {
+    if (summary.subtotal >= 50000) return { text: 'FREE Shipping!', color: 'text-green-600' }
+    if (summary.subtotal >= 25000) return { text: '₦250 shipping', color: 'text-yellow-600' }
+    if (summary.subtotal >= 10000) return { text: '₦350 shipping', color: 'text-yellow-600' }
+    return { text: '₦500 shipping', color: 'text-gray-600' }
+  }
+
+  const shippingMsg = getShippingMessage()
 
   return (
     <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
@@ -1876,7 +2159,10 @@ const CartPage = () => {
             <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4">📋 Order Summary</h2>
             <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm border-b pb-3 sm:pb-4 mb-3 sm:mb-4">
               <div className="flex justify-between"><span className="text-gray-600">Subtotal ({summary.itemCount} items)</span><span className="font-bold">₦{summary.subtotal?.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className="font-bold text-green-600">₦{summary.shipping?.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className={`font-bold ${shippingMsg.color}`}>{shippingMsg.text}</span></div>
+              {summary.subtotal < 50000 && (
+                <p className="text-xs text-green-600">Add ₦{(50000 - summary.subtotal).toLocaleString()} more for FREE shipping! 🎉</p>
+              )}
               <div className="flex justify-between text-base sm:text-lg font-bold border-t pt-2 sm:pt-3"><span>Total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
             </div>
             
@@ -1911,6 +2197,7 @@ const CheckoutPage = () => {
   const [toast, setToast] = useState(null)
   const [showPayment, setShowPayment] = useState(false)
   const [pendingOrderId, setPendingOrderId] = useState(null)
+  const [orderItems, setOrderItems] = useState([])
   const navigate = useNavigate()
 
   if (!user) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><h2 className="text-2xl">Please sign in</h2></div>
@@ -1936,7 +2223,11 @@ const CheckoutPage = () => {
       })
       const data = await res.json()
       setLoading(false)
-      if (data.success) { setPendingOrderId(data.data.order._id); setShowPayment(true) }
+      if (data.success) { 
+        setPendingOrderId(data.data.order._id)
+        setOrderItems(data.data.order.items || [])
+        setShowPayment(true) 
+      }
       else setToast({ message: data.message || 'Order failed', type: 'error' })
     } catch { setLoading(false); setToast({ message: 'Cannot connect to server', type: 'error' }) }
   }
@@ -1950,7 +2241,7 @@ const CheckoutPage = () => {
   return (
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      {showPayment && <PaymentModal isOpen={showPayment} onClose={() => setShowPayment(false)} amount={summary.total} orderId={pendingOrderId} onSuccess={handlePaymentSuccess} />}
+      {showPayment && <PaymentModal isOpen={showPayment} onClose={() => setShowPayment(false)} amount={summary.total} orderId={pendingOrderId} orderItems={orderItems} onSuccess={handlePaymentSuccess} />}
       
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-4xl mx-auto px-4">
@@ -1989,7 +2280,7 @@ const CheckoutPage = () => {
               <h2 className="text-lg font-bold text-gray-800 mb-4">📋 Order Summary</h2>
               <div className="space-y-2 text-sm border-b pb-4 mb-4">
                 <div className="flex justify-between"><span>{items.length} item(s)</span><span className="font-bold">₦{summary.subtotal?.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Shipping</span><span className="font-bold text-green-600">₦{summary.shipping?.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Shipping</span><span className="font-bold text-green-600">{summary.subtotal >= 50000 ? 'FREE' : '₦' + summary.shipping?.toLocaleString()}</span></div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
               </div>
               
@@ -2008,7 +2299,7 @@ const CheckoutPage = () => {
   )
 }
 
-// My Orders Page with Tracking
+// My Orders Page with Tracking and Reports
 const MyOrdersPage = () => {
   const { user } = useAuth()
   const [orders, setOrders] = useState([])
@@ -2028,14 +2319,22 @@ const MyOrdersPage = () => {
   const handleReportIssue = async (orderId) => {
     const reason = prompt('Please describe the issue (e.g., "Item not received", "Item damaged"):')
     if (!reason) return
-    setToast({ message: 'Report submitted. Admin will review within 24 hours.', type: 'info' })
+    
     try {
-      await fetch(`${API_URL}/api/orders/${orderId}/report`, {
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
         body: JSON.stringify({ reason, orderId })
       })
-    } catch {}
+      const data = await res.json()
+      if (data.success) {
+        setToast({ message: '✓ Report submitted. Admin will review within 24 hours.', type: 'success' })
+      } else {
+        setToast({ message: data.message || 'Failed to submit report', type: 'error' })
+      }
+    } catch {
+      setToast({ message: 'Failed to submit report', type: 'error' })
+    }
   }
 
   const getStatusColor = (status) => {
@@ -2104,9 +2403,11 @@ const MyOrdersPage = () => {
                       ✍️ Leave Review
                     </button>
                   )}
-                  <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
-                    🚨 Report Issue / Request Refund
-                  </button>
+                  {order.status !== 'cancelled' && (
+                    <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
+                      🚨 Report Issue / Request Refund
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -2251,7 +2552,7 @@ const LoginPage = () => {
 const RegisterPage = () => {
   const { register, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'buyer', phone: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'buyer', phone: '', storeName: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -2297,6 +2598,12 @@ const RegisterPage = () => {
               <label className="text-sm font-medium text-gray-700 mb-1 block">Full Name *</label>
               <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your full name" required />
             </div>
+            {form.role === 'seller' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Store Name *</label>
+                <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your store/business name" required />
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Email Address *</label>
               <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" required />
@@ -2333,7 +2640,7 @@ const RegisterPage = () => {
   )
 }
 
-// Seller Dashboard with Analytics
+// Seller Dashboard with Analytics, Products, Orders, Wallet & Withdraw
 const SellerDashboard = () => {
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
@@ -2343,6 +2650,9 @@ const SellerDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview')
   const [toast, setToast] = useState(null)
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [showWithdraw, setShowWithdraw] = useState(false)
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [withdrawLoading, setWithdrawLoading] = useState(false)
   const [productForm, setProductForm] = useState({ title: '', description: '', price: '', originalPrice: '', stock: '', category: 'phones-accessories', condition: 'new', location: '' })
   const [uploading, setUploading] = useState(false)
   const navigate = useNavigate()
@@ -2361,6 +2671,7 @@ const SellerDashboard = () => {
     })
   }, [user, navigate])
 
+  // FIXED: Update status without page reload
   const handleUpdateStatus = async (orderId, status) => {
     try {
       const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, { 
@@ -2369,8 +2680,51 @@ const SellerDashboard = () => {
         body: JSON.stringify({ status }) 
       })
       const data = await res.json()
-      if (data.success) { setToast({ message: '✓ Order status updated!', type: 'success' }); window.location.reload() }
+      if (data.success) { 
+        setToast({ message: `✓ Order ${status}!`, type: 'success' })
+        // Update local state instead of reloading
+        setOrders(prevOrders => prevOrders.map(order => 
+          order._id === orderId ? { ...order, status } : order
+        ))
+      }
     } catch { setToast({ message: 'Failed to update', type: 'error' }) }
+  }
+
+  const handleWithdraw = async (e) => {
+    e.preventDefault()
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+      setToast({ message: 'Enter valid amount', type: 'error' })
+      return
+    }
+    
+    const amount = parseFloat(withdrawAmount)
+    const availableBalance = user?.walletBalance || 0
+    
+    if (amount > availableBalance) {
+      setToast({ message: 'Insufficient balance', type: 'error' })
+      return
+    }
+    
+    setWithdrawLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/seller/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        body: JSON.stringify({ amount, bankAccount: '', notes: '' })
+      })
+      const data = await res.json()
+      setWithdrawLoading(false)
+      if (data.success) {
+        setToast({ message: '✓ Withdrawal request submitted! Admin will process within 24 hours.', type: 'success' })
+        setShowWithdraw(false)
+        setWithdrawAmount('')
+      } else {
+        setToast({ message: data.message || 'Withdrawal failed', type: 'error' })
+      }
+    } catch {
+      setWithdrawLoading(false)
+      setToast({ message: 'Withdrawal failed', type: 'error' })
+    }
   }
 
   const handleAddProduct = async (e) => {
@@ -2407,44 +2761,84 @@ const SellerDashboard = () => {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 flex-wrap gap-2">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">📊 Seller Dashboard</h1>
-            {(user?.sellerProfile?.isApproved || user?.role === 'admin') ? (
-              <button onClick={() => setShowAddProduct(true)} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 text-sm">
-                ➕ Add New Product
-              </button>
-            ) : (
-              <span className="px-4 py-2 bg-yellow-100 text-yellow-700 font-bold rounded-lg text-sm">⏳ Awaiting Approval</span>
-            )}
+            <div className="flex gap-2">
+              {(user?.sellerProfile?.isApproved || user?.role === 'admin') ? (
+                <>
+                  <button onClick={() => setShowAddProduct(true)} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 text-sm">
+                    ➕ Add Product
+                  </button>
+                  <button onClick={() => setShowWithdraw(true)} className="px-4 py-2 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 text-sm">
+                    💰 Withdraw
+                  </button>
+                </>
+              ) : (
+                <span className="px-4 py-2 bg-yellow-100 text-yellow-700 font-bold rounded-lg text-sm">⏳ Awaiting Approval</span>
+              )}
+            </div>
           </div>
           
           {/* Analytics Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Total Orders</p>
               <p className="text-2xl sm:text-3xl font-bold text-gray-800">{stats?.stats?.totalOrders || 0}</p>
-              <p className="text-xs text-green-600 mt-1">📈 +12% this week</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Revenue</p>
               <p className="text-xl sm:text-2xl font-bold text-green-600">₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p>
-              <p className="text-xs text-green-600 mt-1">💰 +8% this week</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Pending Orders</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Pending</p>
               <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats?.stats?.pendingOrders || 0}</p>
-              <p className="text-xs text-orange-600 mt-1">⚡ Need attention</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Products</p>
               <p className="text-2xl sm:text-3xl font-bold text-orange-600">{products.length}</p>
-              <p className="text-xs text-gray-500 mt-1">🛍️ {products.filter(p => p.isApproved).length} active</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
+              <p className="text-gray-500 text-xs sm:text-sm">Wallet</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600">₦{(user?.walletBalance || 0).toLocaleString()}</p>
             </div>
           </div>
 
+          {/* Withdraw Modal */}
+          {showWithdraw && (
+            <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl max-w-md w-full p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-gray-800">💰 Withdraw Funds</h2>
+                  <button onClick={() => setShowWithdraw(false)} className="text-gray-500 text-2xl">✕</button>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                  <p className="text-sm text-gray-600">Available Balance</p>
+                  <p className="text-2xl font-bold text-blue-600">₦{(user?.walletBalance || 0).toLocaleString()}</p>
+                </div>
+                <form onSubmit={handleWithdraw} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Amount to Withdraw (₦)</label>
+                    <input type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm"
+                      placeholder="Enter amount" required />
+                  </div>
+                  <div className="bg-yellow-50 p-3 rounded-lg">
+                    <p className="text-xs text-yellow-700">⚠️ Withdrawal requests are processed within 24 hours by admin.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setShowWithdraw(false)} className="flex-1 py-3 bg-gray-300 text-gray-700 font-bold rounded-lg">Cancel</button>
+                    <button type="submit" disabled={withdrawLoading} className="flex-1 py-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 disabled:opacity-50">
+                      {withdrawLoading ? 'Processing...' : 'Request Withdrawal'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
           {/* Add Product Modal */}
           {showAddProduct && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
               <div className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-bold text-gray-800">➕ Add New Product</h2>
@@ -2519,7 +2913,7 @@ const SellerDashboard = () => {
               <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📊 Overview</button>
               <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📦 Products ({products.length})</button>
               <button onClick={() => setActiveTab('orders')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'orders' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📝 Orders ({orders.length})</button>
-              <button onClick={() => setActiveTab('analytics')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'analytics' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📈 Analytics</button>
+              <button onClick={() => setActiveTab('wallet')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'wallet' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💰 Wallet</button>
             </div>
             
             <div className="p-4 sm:p-6">
@@ -2530,11 +2924,13 @@ const SellerDashboard = () => {
                     <div className="space-y-2">
                       <button onClick={() => setShowAddProduct(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">➕ Add New Product</button>
                       <button onClick={() => setActiveTab('orders')} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">📦 View Orders</button>
+                      <button onClick={() => setShowWithdraw(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">💰 Withdraw Funds</button>
                     </div>
                   </div>
                   <div className="p-4 bg-green-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2">📈 Store Performance</h3>
                     <p className="text-sm text-gray-500">Rating: ⭐ {user?.sellerProfile?.rating || 0} | Sales: {user?.sellerProfile?.totalSales || 0} | Status: {user?.sellerProfile?.isApproved ? '✓ Approved' : '⏳ Pending'}</p>
+                    <p className="text-sm text-gray-500 mt-2">Wallet Balance: ₦{(user?.walletBalance || 0).toLocaleString()}</p>
                   </div>
                 </div>
               )}
@@ -2596,10 +2992,10 @@ const SellerDashboard = () => {
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <p className="text-xs sm:text-sm text-gray-500">{order.items.length} item(s)</p>
                             <div className="flex gap-2 flex-wrap">
-                              {order.status === 'pending' && <button onClick={() => handleUpdateStatus(order._id, 'confirmed')} className="px-4 py-2 bg-blue-500 text-white text-xs rounded-lg">Confirm</button>}
-                              {order.status === 'confirmed' && <button onClick={() => handleUpdateStatus(order._id, 'processing')} className="px-4 py-2 bg-purple-500 text-white text-xs rounded-lg">Process</button>}
-                              {order.status === 'processing' && <button onClick={() => handleUpdateStatus(order._id, 'shipped')} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg">Ship</button>}
-                              {order.status === 'shipped' && <button onClick={() => handleUpdateStatus(order._id, 'delivered')} className="px-4 py-2 bg-green-500 text-white text-xs rounded-lg">Delivered</button>}
+                              {order.status === 'pending' && <button onClick={() => handleUpdateStatus(order._id, 'confirmed')} className="px-4 py-2 bg-blue-500 text-white text-xs rounded-lg">✓ Confirm</button>}
+                              {order.status === 'confirmed' && <button onClick={() => handleUpdateStatus(order._id, 'processing')} className="px-4 py-2 bg-purple-500 text-white text-xs rounded-lg">📦 Process</button>}
+                              {order.status === 'processing' && <button onClick={() => handleUpdateStatus(order._id, 'shipped')} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg">🚚 Ship</button>}
+                              {order.status === 'shipped' && <button onClick={() => handleUpdateStatus(order._id, 'delivered')} className="px-4 py-2 bg-green-500 text-white text-xs rounded-lg">✓ Delivered</button>}
                             </div>
                           </div>
                         </div>
@@ -2609,11 +3005,25 @@ const SellerDashboard = () => {
                 </div>
               )}
 
-              {activeTab === 'analytics' && (
-                <div className="text-center py-12">
-                  <span className="text-5xl block mb-4">📊</span>
-                  <p className="text-gray-500">Sales analytics coming soon!</p>
-                  <p className="text-sm text-gray-400">Track your performance, revenue trends, and customer insights.</p>
+              {activeTab === 'wallet' && (
+                <div>
+                  <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-6 rounded-lg mb-6">
+                    <p className="text-sm opacity-80">Available Balance</p>
+                    <p className="text-3xl font-bold">₦{(user?.walletBalance || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <h4 className="font-bold text-gray-800 mb-2">💵 Quick Withdraw</h4>
+                      <button onClick={() => setShowWithdraw(true)} className="w-full py-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600">
+                        Withdraw Funds
+                      </button>
+                    </div>
+                    <div className="p-4 bg-orange-50 rounded-lg">
+                      <h4 className="font-bold text-gray-800 mb-2">📊 Earning Stats</h4>
+                      <p className="text-sm text-gray-600">Total Earnings: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p>
+                      <p className="text-sm text-gray-600">Pending: ₦{(user?.pendingBalance || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2624,7 +3034,7 @@ const SellerDashboard = () => {
   )
 }
 
-// Admin Dashboard
+// Admin Dashboard with Pending Products, Sellers, Reports
 const AdminDashboard = () => {
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
@@ -2638,25 +3048,45 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (!user || user.role !== 'admin') { navigate('/login'); return }
-    Promise.all([
-      fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
-      fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { products: [] } })),
-      fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { sellers: [] } })),
-      fetch(`${API_URL}/api/admin/reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { reports: [] } })),
-    ]).then(([statsData, productsData, sellersData, reportsData]) => {
-      if (statsData.success) setStats(statsData.data)
-      if (productsData.success) setPendingProducts(productsData.data.products || [])
-      if (sellersData.success) setPendingSellers(sellersData.data.sellers || [])
-      if (reportsData.success) setReports(reportsData.data.reports || [])
-      setLoading(false)
-    })
+    
+    const fetchData = async () => {
+      try {
+        const [statsRes, productsRes, sellersRes, reportsRes, allProductsRes] = await Promise.all([
+          fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
+          fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { products: [] } })),
+          fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { sellers: [] } })),
+          fetch(`${API_URL}/api/admin/reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { reports: [] } })),
+          fetch(`${API_URL}/api/products?isApproved=false&limit=50`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false }))
+        ])
+        
+        if (statsRes.success) setStats(statsRes.data)
+        
+        // Get pending products from dedicated endpoint or fallback to filtered products
+        const products = productsRes.success ? (productsRes.data.products || []) : []
+        const allPending = allProductsRes.success ? (allProductsRes.data.products || []).filter(p => !p.isApproved) : []
+        setPendingProducts(products.length > 0 ? products : allPending)
+        
+        if (sellersRes.success) setPendingSellers(sellersRes.data.sellers || [])
+        if (reportsRes.success) setReports(reportsRes.data.reports || [])
+        
+        setLoading(false)
+      } catch (error) {
+        console.error('Error fetching admin data:', error)
+        setLoading(false)
+      }
+    }
+    
+    fetchData()
   }, [user, navigate])
 
   const handleApproveProduct = async (productId) => {
     try {
       const res = await fetch(`${API_URL}/api/admin/products/${productId}/approve`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       const data = await res.json()
-      if (data.success) { setToast({ message: '✓ Product approved!', type: 'success' }); setPendingProducts(prev => prev.filter(p => p._id !== productId)) }
+      if (data.success) { 
+        setToast({ message: '✓ Product approved!', type: 'success' })
+        setPendingProducts(prev => prev.filter(p => p._id !== productId))
+      }
     } catch { setToast({ message: 'Failed to approve', type: 'error' }) }
   }
 
@@ -2664,7 +3094,10 @@ const AdminDashboard = () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/products/${productId}/reject`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       const data = await res.json()
-      if (data.success) { setToast({ message: 'Product rejected', type: 'info' }); setPendingProducts(prev => prev.filter(p => p._id !== productId)) }
+      if (data.success) { 
+        setToast({ message: 'Product rejected', type: 'info' })
+        setPendingProducts(prev => prev.filter(p => p._id !== productId))
+      }
     } catch { setToast({ message: 'Failed', type: 'error' }) }
   }
 
@@ -2672,16 +3105,24 @@ const AdminDashboard = () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/sellers/${sellerId}/approve`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       const data = await res.json()
-      if (data.success) { setToast({ message: '✓ Seller approved!', type: 'success' }); setPendingSellers(prev => prev.filter(s => s._id !== sellerId)) }
+      if (data.success) { 
+        setToast({ message: '✓ Seller approved!', type: 'success' })
+        setPendingSellers(prev => prev.filter(s => s._id !== sellerId))
+      }
     } catch { setToast({ message: 'Failed', type: 'error' }) }
   }
 
-  const handleRefund = async (orderId) => {
-    if (!confirm('Are you sure you want to process this refund?')) return
+  const handleProcessRefund = async (orderId, action) => {
     try {
-      const res = await fetch(`${API_URL}/api/admin/orders/${orderId}/refund`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      const res = await fetch(`${API_URL}/api/admin/orders/${orderId}/${action}`, { 
+        method: 'PUT', 
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } 
+      })
       const data = await res.json()
-      if (data.success) { setToast({ message: '✓ Refund processed!', type: 'success' }); setReports(prev => prev.filter(r => r.orderId !== orderId)) }
+      if (data.success) { 
+        setToast({ message: `✓ Refund ${action}!`, type: 'success' })
+        setReports(prev => prev.filter(r => r.orderId !== orderId))
+      }
     } catch { setToast({ message: 'Failed to process refund', type: 'error' }) }
   }
 
@@ -2723,6 +3164,7 @@ const AdminDashboard = () => {
               <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📦 Pending Products ({pendingProducts.length})</button>
               <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
               <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🚨 Refund Reports ({reports.length})</button>
+              <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💬 Support Chats</button>
             </div>
             
             <div className="p-4 sm:p-6">
@@ -2748,13 +3190,13 @@ const AdminDashboard = () => {
                   {pendingProducts.length > 0 ? (
                     <div className="space-y-4">
                       {pendingProducts.map(p => (
-                        <div key={p._id} className="border rounded-lg p-4 flex items-center justify-between">
+                        <div key={p._id} className="border rounded-lg p-4 flex items-center justify-between flex-wrap gap-4">
                           <div className="flex items-center gap-4">
                             <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-3xl">📦</div>
                             <div>
                               <p className="font-bold text-sm">{p.title}</p>
                               <p className="text-xs text-gray-500">₦{p.price?.toLocaleString()} | Stock: {p.stock}</p>
-                              <p className="text-xs text-gray-500">Seller: {p.seller?.name}</p>
+                              <p className="text-xs text-gray-500">Seller: {p.seller?.name || 'Unknown'}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -2773,11 +3215,12 @@ const AdminDashboard = () => {
                   {pendingSellers.length > 0 ? (
                     <div className="space-y-4">
                       {pendingSellers.map(s => (
-                        <div key={s._id} className="border rounded-lg p-4 flex items-center justify-between">
+                        <div key={s._id} className="border rounded-lg p-4 flex items-center justify-between flex-wrap gap-4">
                           <div>
                             <p className="font-bold text-sm">{s.name}</p>
                             <p className="text-xs text-gray-500">{s.email}</p>
                             <p className="text-xs text-gray-500">Phone: {s.phone || 'N/A'}</p>
+                            {s.sellerProfile?.storeName && <p className="text-xs text-blue-600">Store: {s.sellerProfile.storeName}</p>}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => handleApproveSeller(s._id)} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve</button>
@@ -2794,18 +3237,29 @@ const AdminDashboard = () => {
                   {reports.length > 0 ? (
                     <div className="space-y-4">
                       {reports.map(r => (
-                        <div key={r._id} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
+                        <div key={r._id || r.orderId} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                             <p className="font-bold text-sm">Order: #{r.orderId?.slice(-8).toUpperCase()}</p>
-                            <span className="px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">{r.status || 'Pending'}</span>
+                            <span className={`px-3 py-1 text-xs font-bold rounded ${r.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : r.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                              {r.status || 'Pending'}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-600 mb-2">{r.reason}</p>
-                          <p className="text-xs text-gray-500">Reported: {new Date(r.createdAt).toLocaleDateString()}</p>
-                          <button onClick={() => handleRefund(r.orderId)} className="mt-3 px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">💸 Process Refund</button>
+                          <p className="text-xs text-gray-500 mb-3">Reported: {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Recently'}</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleProcessRefund(r.orderId, 'approve-refund')} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve Refund</button>
+                            <button onClick={() => handleProcessRefund(r.orderId, 'reject-refund')} className="px-4 py-2 bg-red-500 text-white text-xs font-bold rounded hover:bg-red-600">✕ Reject</button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-center py-8 text-gray-500 text-sm">No reports ✓</p>}
+                  ) : <p className="text-center py-8 text-gray-500 text-sm">No refund reports ✓</p>}
+                </div>
+              )}
+
+              {activeTab === 'chats' && (
+                <div>
+                  <p className="text-center py-8 text-gray-500 text-sm">Support tickets and buyer-seller chats appear here. Check AI responses and escalate as needed.</p>
                 </div>
               )}
             </div>
@@ -2816,10 +3270,10 @@ const AdminDashboard = () => {
   )
 }
 
-// Profile Page
+// Profile Page with Store Name separate from Full Name
 const ProfilePage = () => {
   const { user, updateUser } = useAuth()
-  const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '' })
+  const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '', storeName: '' })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
@@ -2827,7 +3281,14 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (!user) { navigate('/login'); return }
-    setForm({ name: user.name || '', phone: user.phone || '', street: user.address?.street || '', city: user.address?.city || '', state: user.address?.state || '' })
+    setForm({ 
+      name: user.name || '', 
+      phone: user.phone || '', 
+      street: user.address?.street || '', 
+      city: user.address?.city || '', 
+      state: user.address?.state || '',
+      storeName: user.sellerProfile?.storeName || ''
+    })
   }, [user, navigate])
 
   const handleUpdate = async (e) => {
@@ -2862,6 +3323,9 @@ const ProfilePage = () => {
               </div>
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-gray-800">{user.name}</h2>
+                {user.sellerProfile?.storeName && (
+                  <p className="text-sm text-blue-600">🏪 {user.sellerProfile.storeName}</p>
+                )}
                 <p className="text-gray-500 text-sm">{user.email}</p>
                 <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold capitalize ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : user.role === 'seller' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
                   {user.role}
@@ -2874,6 +3338,9 @@ const ProfilePage = () => {
             <div className="flex border-b">
               <button onClick={() => setActiveTab('info')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'info' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📝 Personal Info</button>
               <button onClick={() => setActiveTab('address')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'address' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📍 Address</button>
+              {user.role === 'seller' && (
+                <button onClick={() => setActiveTab('store')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'store' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Store</button>
+              )}
               <button onClick={() => setActiveTab('security')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'security' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🔒 Security</button>
             </div>
             
@@ -2916,6 +3383,21 @@ const ProfilePage = () => {
                   </div>
                   <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">
                     {loading ? 'Updating...' : '✓ Update Address'}
+                  </button>
+                </form>
+              )}
+
+              {activeTab === 'store' && user.role === 'seller' && (
+                <form onSubmit={handleUpdate} className="space-y-3 sm:space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Store Name</label>
+                    <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your store/business name" />
+                  </div>
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-xs text-blue-700">📋 Store name is shown to buyers on your products and store page.</p>
+                  </div>
+                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">
+                    {loading ? 'Updating...' : '✓ Update Store Name'}
                   </button>
                 </form>
               )}
@@ -2997,39 +3479,41 @@ function App() {
       <RecentlyViewedProvider>
         <WishlistProvider>
           <NotificationProvider>
-            <CartProvider>
-              <div className="min-h-screen flex flex-col bg-gray-100">
-                <ScrollToTop />
-                <Header />
-                <main className="flex-1">
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/products" element={<ProductsPage />} />
-                    <Route path="/products/:id" element={<ProductDetailPage />} />
-                    <Route path="/cart" element={<CartPage />} />
-                    <Route path="/checkout" element={<CheckoutPage />} />
-                    <Route path="/orders" element={<MyOrdersPage />} />
-                    <Route path="/wishlist" element={<WishlistPage />} />
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/register" element={<RegisterPage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/seller" element={<SellerDashboard />} />
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="*" element={
-                      <div className="min-h-screen flex items-center justify-center">
-                        <div className="text-center">
-                          <span className="text-6xl block mb-4">🔍</span>
-                          <h1 className="text-2xl sm:text-4xl font-bold text-gray-400 mb-4">404 - Page Not Found</h1>
-                          <button onClick={() => window.location.href = '/'} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600">Go to Homepage</button>
+            <ChatProvider>
+              <CartProvider>
+                <div className="min-h-screen flex flex-col bg-gray-100">
+                  <ScrollToTop />
+                  <Header />
+                  <main className="flex-1">
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/products" element={<ProductsPage />} />
+                      <Route path="/products/:id" element={<ProductDetailPage />} />
+                      <Route path="/cart" element={<CartPage />} />
+                      <Route path="/checkout" element={<CheckoutPage />} />
+                      <Route path="/orders" element={<MyOrdersPage />} />
+                      <Route path="/wishlist" element={<WishlistPage />} />
+                      <Route path="/login" element={<LoginPage />} />
+                      <Route path="/register" element={<RegisterPage />} />
+                      <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/seller" element={<SellerDashboard />} />
+                      <Route path="/admin" element={<AdminDashboard />} />
+                      <Route path="*" element={
+                        <div className="min-h-screen flex items-center justify-center">
+                          <div className="text-center">
+                            <span className="text-6xl block mb-4">🔍</span>
+                            <h1 className="text-2xl sm:text-4xl font-bold text-gray-400 mb-4">404 - Page Not Found</h1>
+                            <button onClick={() => window.location.href = '/'} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600">Go to Homepage</button>
+                          </div>
                         </div>
-                      </div>
-                    } />
-                  </Routes>
-                </main>
-                <Footer />
-                <LiveChat />
-              </div>
-            </CartProvider>
+                      } />
+                    </Routes>
+                  </main>
+                  <Footer />
+                  <SupportChat />
+                </div>
+              </CartProvider>
+            </ChatProvider>
           </NotificationProvider>
         </WishlistProvider>
       </RecentlyViewedProvider>
