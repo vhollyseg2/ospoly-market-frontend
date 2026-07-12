@@ -1,7 +1,28 @@
 import { useState, useEffect, createContext, useContext, useRef } from 'react'
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 
-const API_URL = 'https://ospoly-market-api.onrender.com'
+const API_URL = import.meta.env.VITE_API_URL || 'https://ospoly-market-api.onrender.com'
+
+const getProductImage = (product, index = 0) => {
+  const image = product?.images?.[index]
+  return typeof image === 'string' ? image : image?.url || ''
+}
+
+const ProductImage = ({ product, index = 0, alt, className = '', fallbackClassName = '' }) => {
+  const [failed, setFailed] = useState(false)
+  const src = getProductImage(product, index)
+  if (!src || failed) {
+    return (
+      <div className={`w-full h-full bg-gradient-to-br from-orange-50 via-gray-50 to-orange-100 flex items-center justify-center ${fallbackClassName}`} role="img" aria-label={alt || product?.title || 'Product image unavailable'}>
+        <div className="text-center text-gray-400">
+          <span className="text-4xl sm:text-5xl block">🛍️</span>
+          <span className="text-[10px] sm:text-xs mt-2 block">Image coming soon</span>
+        </div>
+      </div>
+    )
+  }
+  return <img src={src} alt={alt || product?.title || 'Product'} className={`product-image ${className}`} loading="lazy" onError={() => setFailed(true)} />
+}
 
 const colors = {
   primary: '#FF7300',
@@ -200,16 +221,19 @@ const ChatProvider = ({ children }) => {
     } catch {}
   }
   
-  const sendMessage = async (recipientId, message, type = 'buyer_to_seller') => {
+  const sendMessage = async (recipientId, message, type = 'buyer_to_seller', productId = null) => {
     const token = localStorage.getItem('accessToken')
-    if (!token) return
+    if (!token) return { success: false, message: 'Please sign in first' }
     try {
-      await fetch(`${API_URL}/api/chat/send`, {
+      const res = await fetch(`${API_URL}/api/chat/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ recipientId, message, type })
+        body: JSON.stringify({ recipientId, message, type, productId })
       })
-    } catch {}
+      return await res.json()
+    } catch {
+      return { success: false, message: 'Unable to send message' }
+    }
   }
   
   useEffect(() => {
@@ -227,8 +251,9 @@ const ChatProvider = ({ children }) => {
 const RecentlyViewedContext = createContext()
 
 const CartProvider = ({ children }) => {
+  const { user } = useContext(AuthContext)
   const [items, setItems] = useState([])
-  const [summary, setSummary] = useState({ itemCount: 0, subtotal: 0, shipping: 500, total: 500 })
+  const [summary, setSummary] = useState({ itemCount: 0, subtotal: 0, shipping: 0, total: 0, shippingIsEstimate: true })
   
   const fetchCart = async () => {
     const token = localStorage.getItem('accessToken')
@@ -238,18 +263,7 @@ const CartProvider = ({ children }) => {
       const data = await res.json()
       if (data.success) { 
         setItems(data.data.cart?.items || [])
-        // Calculate dynamic shipping based on subtotal
-        const subtotal = data.data.summary?.subtotal || 0
-        let shippingFee = 500
-        if (subtotal >= 50000) shippingFee = 0
-        else if (subtotal >= 25000) shippingFee = 250
-        else if (subtotal >= 10000) shippingFee = 350
-        
-        setSummary({
-          ...data.data.summary,
-          shipping: shippingFee,
-          total: (data.data.summary?.subtotal || 0) + shippingFee
-        })
+        setSummary(data.data.summary || { itemCount: 0, subtotal: 0, shipping: 0, total: 0, shippingIsEstimate: true })
       }
     } catch {}
   }
@@ -266,12 +280,7 @@ const CartProvider = ({ children }) => {
       const data = await res.json()
       if (data.success) { 
         setItems(data.data.cart.items)
-        const subtotal = data.data.summary.subtotal
-        let shippingFee = 500
-        if (subtotal >= 50000) shippingFee = 0
-        else if (subtotal >= 25000) shippingFee = 250
-        else if (subtotal >= 10000) shippingFee = 350
-        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+        setSummary(data.data.summary)
         return { success: true } 
       }
       return { success: false, message: data.message }
@@ -288,12 +297,7 @@ const CartProvider = ({ children }) => {
       const data = await res.json()
       if (data.success) { 
         setItems(data.data.cart.items)
-        const subtotal = data.data.summary.subtotal
-        let shippingFee = 500
-        if (subtotal >= 50000) shippingFee = 0
-        else if (subtotal >= 25000) shippingFee = 250
-        else if (subtotal >= 10000) shippingFee = 350
-        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+        setSummary(data.data.summary)
       }
     } catch {}
   }
@@ -310,12 +314,7 @@ const CartProvider = ({ children }) => {
       const data = await res.json()
       if (data.success) { 
         setItems(data.data.cart.items)
-        const subtotal = data.data.summary.subtotal
-        let shippingFee = 500
-        if (subtotal >= 50000) shippingFee = 0
-        else if (subtotal >= 25000) shippingFee = 250
-        else if (subtotal >= 10000) shippingFee = 350
-        setSummary({ ...data.data.summary, shipping: shippingFee, total: subtotal + shippingFee })
+        setSummary(data.data.summary)
       }
     } catch {}
   }
@@ -325,11 +324,17 @@ const CartProvider = ({ children }) => {
     try {
       await fetch(`${API_URL}/api/cart/clear`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       setItems([])
-      setSummary({ itemCount: 0, subtotal: 0, shipping: 500, total: 500 })
+      setSummary({ itemCount: 0, subtotal: 0, shipping: 0, total: 0, shippingIsEstimate: true })
     } catch {}
   }
   
-  useEffect(() => { fetchCart() }, [])
+  useEffect(() => {
+    if (user?._id) fetchCart()
+    else {
+      setItems([])
+      setSummary({ itemCount: 0, subtotal: 0, shipping: 0, total: 0, shippingIsEstimate: true })
+    }
+  }, [user?._id])
   
   return (
     <CartContext.Provider value={{ items, summary, addToCart, removeFromCart, updateQuantity, clearCart, fetchCart }}>
@@ -364,10 +369,10 @@ const Toast = ({ message, type, onClose }) => {
 // Announcement Bar
 const AnnouncementBar = () => {
   const announcements = [
-    '🎉 FREE SHIPPING on orders above ₦50,000!',
-    '⚡ FLASH SALE: Up to 50% off on Electronics!',
-    '🏪 Become a seller and earn today!',
-    '🛡️ 100% Buyer Protection on all orders'
+    '🇳🇬 Shop from verified sellers across Nigeria!',
+    '⚡ Discover new deals from local and nationwide stores!',
+    '🏪 Turn your products into a nationwide online store!',
+    '🛡️ Chat, compare and report issues through one marketplace'
   ]
   const [current, setCurrent] = useState(0)
   
@@ -528,20 +533,26 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
     
     const token = localStorage.getItem('accessToken')
     try {
-      await fetch(`${API_URL}/api/products/${productId}/reviews`, {
+      const response = await fetch(`${API_URL}/api/products/${productId}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ rating, title, comment, aspectRatings })
       })
-    } catch {}
-    
-    setLoading(false)
-    setToast({ message: '✓ Review submitted successfully!', type: 'success' })
-    
-    setTimeout(() => {
-      onSubmit?.({ rating, title, comment, aspectRatings })
-      onClose()
-    }, 1500)
+      const data = await response.json()
+      setLoading(false)
+      if (!data.success) {
+        setToast({ message: data.message || 'Unable to submit review', type: 'error' })
+        return
+      }
+      setToast({ message: '✓ Review submitted successfully!', type: 'success' })
+      setTimeout(() => {
+        onSubmit?.({ rating, title, comment, aspectRatings, isVerified: data.data?.review?.isVerified })
+        onClose()
+      }, 900)
+    } catch {
+      setLoading(false)
+      setToast({ message: 'Unable to connect to the server', type: 'error' })
+    }
   }
   
   return (
@@ -593,7 +604,7 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
           
           <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
             <span className="text-green-600">✓</span>
-            <span className="text-xs text-green-700">Verified Purchase - Your review will help other buyers</span>
+            <span className="text-xs text-green-700">Reviews linked to delivered orders receive a Verified Purchase badge.</span>
           </div>
           
           <button type="submit" disabled={loading} 
@@ -635,249 +646,39 @@ const WishlistButton = ({ product, className = '' }) => {
   )
 }
 
-// Secure Payment Modal - FIXED with seller name for transfer
+// Safe interim checkout confirmation.
+// Online card/transfer payments remain disabled until a verified Paystack account is connected.
 const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess }) => {
-  const { user } = useAuth()
-  const [method, setMethod] = useState('card')
-  const [loading, setLoading] = useState(false)
-  const [cardDetails, setCardDetails] = useState({ number: '', name: '', expiry: '', cvv: '' })
-  const [toast, setToast] = useState(null)
-  const [showRefundPolicy, setShowRefundPolicy] = useState(false)
-  const [transactionId, setTransactionId] = useState(null)
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false)
-  
-  // Get seller name from order items for transfer section
-  const getSellerName = () => {
-    if (orderItems && orderItems.length > 0) {
-      return orderItems[0]?.sellerName || 'the seller'
-    }
-    return 'the seller'
-  }
-  
   if (!isOpen) return null
-  
-  const generateTransactionId = () => 'TXN' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 8).toUpperCase()
-  
-  const verifyPayment = async (txnId) => {
-    const token = localStorage.getItem('accessToken')
-    try {
-      const res = await fetch(`${API_URL}/api/payments/verify/${txnId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const data = await res.json()
-      return data.success && data.data?.verified
-    } catch {
-      return false
-    }
-  }
-  
-  const handlePayment = async () => {
-    setLoading(true)
-    
-    if (method === 'card') {
-      if (cardDetails.number.replace(/\s/g, '').length < 16 || cardDetails.cvv.length < 3) {
-        setToast({ message: 'Invalid card details', type: 'error' })
-        setLoading(false)
-        return
-      }
-    }
-    
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    const newTxnId = generateTransactionId()
-    setTransactionId(newTxnId)
-    
-    // For transfer method, require manual confirmation
-    if (method === 'transfer') {
-      setLoading(false)
-      setToast({ message: 'Transfer to the account below and click "I Have Paid" to confirm', type: 'info' })
-      return
-    }
-    
-    // For card, simulate verification
-    const verified = await verifyPayment(newTxnId)
-    if (verified) {
-      setPaymentConfirmed(true)
-      try {
-        await fetch(`${API_URL}/api/payments/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-          body: JSON.stringify({ orderId, transactionId: newTxnId, amount, method, status: 'completed', timestamp: new Date().toISOString() })
-        })
-      } catch {}
-      setLoading(false)
-      setToast({ message: '✓ Payment verified and processed!', type: 'success' })
-      setTimeout(() => { onSuccess(); onClose() }, 1500)
-    } else {
-      setLoading(false)
-      setToast({ message: 'Payment verification failed. Please try again.', type: 'error' })
-    }
-  }
-  
-  const handleConfirmTransfer = async () => {
-    if (!transactionId) {
-      setToast({ message: 'Please wait for transaction ID', type: 'error' })
-      return
-    }
-    setLoading(true)
-    
-    // Simulate verification
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    const verified = await verifyPayment(transactionId)
-    if (verified) {
-      setPaymentConfirmed(true)
-      try {
-        await fetch(`${API_URL}/api/payments/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-          body: JSON.stringify({ orderId, transactionId, amount, method: 'transfer', status: 'completed', timestamp: new Date().toISOString() })
-        })
-      } catch {}
-      setLoading(false)
-      setToast({ message: '✓ Transfer confirmed and verified!', type: 'success' })
-      setTimeout(() => { onSuccess(); onClose() }, 1500)
-    } else {
-      setLoading(false)
-      setToast({ message: 'Transfer not yet confirmed. Please verify with your bank.', type: 'error' })
-    }
-  }
-  
+  const sellerNames = [...new Set((orderItems || []).map(item => item?.sellerName || item?.seller?.sellerProfile?.storeName || item?.seller?.name).filter(Boolean))]
+
   return (
-    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-        
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800">💳 Secure Payment</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="order-confirmation-title">
+      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+        <div className="w-16 h-16 mx-auto bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mb-4">✓</div>
+        <h2 id="order-confirmation-title" className="text-2xl font-bold text-gray-900 text-center">Order placed successfully</h2>
+        <p className="text-sm text-gray-500 text-center mt-2">Order #{orderId?.slice(-8).toUpperCase()}</p>
+
+        <div className="my-5 rounded-xl bg-orange-50 border border-orange-200 p-4">
+          <p className="text-sm font-bold text-orange-900">Temporary payment method: Pay on Delivery</p>
+          <p className="text-xs text-orange-800 mt-2 leading-relaxed">
+            Online card, USSD and bank-transfer payments are not active yet. Do not transfer money to any account shown outside a verified Paystack checkout. Confirm the item and seller before paying on delivery.
+          </p>
         </div>
-        
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 flex items-center gap-2">
-          <span className="text-green-600 text-xl">🔒</span>
-          <div>
-            <p className="text-sm font-bold text-green-800">256-bit SSL Encrypted</p>
-            <p className="text-xs text-green-600">Your payment is fully secured</p>
-          </div>
+
+        <div className="space-y-2 text-sm bg-gray-50 rounded-xl p-4">
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Order total</span><span className="font-bold text-gray-900">₦{amount?.toLocaleString()}</span></div>
+          {sellerNames.length > 0 && <div className="flex justify-between gap-4"><span className="text-gray-500">Seller(s)</span><span className="font-medium text-right">{sellerNames.join(', ')}</span></div>}
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Payment</span><span className="font-medium text-green-700">On delivery</span></div>
         </div>
-        
-        <div className="bg-orange-50 p-4 rounded-lg mb-4">
-          <p className="text-gray-600 text-sm">Amount to pay</p>
-          <p className="text-2xl font-bold text-orange-600">₦{amount?.toLocaleString()}</p>
-          <p className="text-xs text-gray-500 mt-1">Order: #{orderId?.slice(-8).toUpperCase()}</p>
-          {transactionId && <p className="text-xs text-gray-500">TXN: {transactionId}</p>}
+
+        <div className="mt-5 p-3 bg-blue-50 rounded-lg text-xs text-blue-800">
+          🛡️ Never share your OTP, PIN or card details with a seller. Report suspicious requests through support.
         </div>
-        
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {[
-            { key: 'card', icon: '💳', label: 'Card' },
-            { key: 'transfer', icon: '🏦', label: 'Transfer' },
-            { key: 'ussd', icon: '📱', label: 'USSD' },
-            { key: 'wallet', icon: '👛', label: 'Wallet' }
-          ].map(({ key, icon, label }) => (
-            <button key={key} onClick={() => setMethod(key)}
-              className={`p-3 border-2 rounded-lg text-center transition-all ${method === key ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-              <span className="text-2xl block mb-1">{icon}</span>
-              <span className="text-xs font-medium">{label}</span>
-            </button>
-          ))}
-        </div>
-        
-        {method === 'card' && (
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">Card Number</label>
-              <input type="text" maxLength={19} value={cardDetails.number}
-                onChange={e => setCardDetails({...cardDetails, number: e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim()})}
-                placeholder="1234 5678 9012 3456"
-                className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">Cardholder Name</label>
-              <input type="text" value={cardDetails.name}
-                onChange={e => setCardDetails({...cardDetails, name: e.target.value.toUpperCase()})}
-                placeholder="JOHN DOE"
-                className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">Expiry</label>
-                <input type="text" maxLength={5} value={cardDetails.expiry}
-                  onChange={e => setCardDetails({...cardDetails, expiry: e.target.value})}
-                  placeholder="MM/YY"
-                  className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">CVV</label>
-                <input type="password" maxLength={4} value={cardDetails.cvv}
-                  onChange={e => setCardDetails({...cardDetails, cvv: e.target.value.replace(/\D/g, '')})}
-                  placeholder="•••"
-                  className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {method === 'transfer' && (
-          <div className="bg-gray-50 p-4 rounded-lg mb-4">
-            <p className="text-sm text-gray-600 mb-2">Transfer to:</p>
-            <p className="text-sm font-bold text-gray-800">{getSellerName()} - First Bank</p>
-            <p className="text-lg font-mono text-orange-600">3056789012</p>
-            <p className="text-xs text-gray-500 mt-2">Use order ID as payment reference: #{orderId?.slice(-8).toUpperCase()}</p>
-            {transactionId && !paymentConfirmed && (
-              <button onClick={handleConfirmTransfer} disabled={loading}
-                className="w-full mt-3 py-2 bg-green-500 text-white font-bold rounded hover:bg-green-600 disabled:opacity-50">
-                {loading ? 'Verifying...' : '✓ I Have Paid - Confirm Transfer'}
-              </button>
-            )}
-          </div>
-        )}
-        
-        {method === 'ussd' && (
-          <div className="bg-gray-50 p-4 rounded-lg mb-4">
-            <p className="text-sm text-gray-600 mb-2">Dial this USSD code:</p>
-            <p className="text-2xl font-bold text-orange-600">*894#</p>
-            <p className="text-xs text-gray-500 mt-2">Follow the prompts and enter amount: ₦{amount?.toLocaleString()}</p>
-          </div>
-        )}
-        
-        {method === 'wallet' && (
-          <div className="bg-gray-50 p-4 rounded-lg mb-4">
-            <p className="text-sm text-gray-600 mb-2">Pay with Wallet Balance</p>
-            <p className="text-lg font-bold text-gray-800">Available: ₦{(user?.walletBalance || 0).toLocaleString()}</p>
-            {user?.walletBalance < amount && (
-              <p className="text-xs text-red-500 mt-2">Insufficient balance. Please add funds or use another method.</p>
-            )}
-          </div>
-        )}
-        
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <button onClick={() => setShowRefundPolicy(!showRefundPolicy)} className="flex items-center justify-between w-full text-sm">
-            <span className="font-bold text-blue-800">🛡️ Buyer Protection & Refund Policy</span>
-            <span>{showRefundPolicy ? '▲' : '▼'}</span>
-          </button>
-          {showRefundPolicy && (
-            <div className="mt-3 text-xs text-blue-700 space-y-2">
-              <p>• Full refund if seller doesn't deliver within 7 days</p>
-              <p>• Partial refund for damaged/incorrect items (50-100%)</p>
-              <p>• Report scams within 48 hours of delivery issue</p>
-              <p>• Disputes handled by admin within 24 hours</p>
-              <p>• Refund processed within 3-5 business days</p>
-              <p className="font-bold">• Escrow protection - payment held until delivery confirmed</p>
-            </div>
-          )}
-        </div>
-        
-        {method !== 'transfer' && (
-          <button onClick={handlePayment} disabled={loading || paymentConfirmed}
-            className="w-full py-4 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-base">
-            {loading ? '🔒 Processing...' : paymentConfirmed ? '✓ Payment Complete' : `🔒 Pay ₦${amount?.toLocaleString()} Securely`}
-          </button>
-        )}
-        
-        <div className="flex items-center justify-center gap-4 mt-4 text-xs text-gray-500">
-          <span>🔒 SSL</span><span>✓ PCI</span><span>🛡️ Insured</span>
+
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          <button onClick={onClose} className="py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200">Continue shopping</button>
+          <button onClick={() => { onSuccess?.(); onClose() }} className="py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600">View my orders</button>
         </div>
       </div>
     </div>
@@ -947,13 +748,13 @@ const SupportChat = () => {
       return 'To request a refund: 1) Go to "My Orders", 2) Click "Report Issue" on the order, 3) Describe the problem. Admin will review within 24 hours and process your refund within 3-5 business days. 💸'
     }
     if (lowerMsg.includes('payment')) {
-      return 'We accept Card, Bank Transfer, USSD, and Wallet payments. All payments are secured with escrow protection - your money is held safely until delivery is confirmed. 🔒'
+      return 'For now, orders use Pay on Delivery while our verified Paystack checkout is being prepared. Never transfer to a hard-coded account or share your OTP, PIN or card details. We will clearly announce when verified online payments go live. 🔒'
     }
     if (lowerMsg.includes('seller') || lowerMsg.includes('become')) {
       return 'To become a seller: 1) Create an account, 2) Register as a seller, 3) Wait for admin approval (usually within 24 hours). Once approved, you can list products from your dashboard! 🚀'
     }
     if (lowerMsg.includes('delivery') || lowerMsg.includes('shipping')) {
-      return 'Delivery times vary by location. Lagos: 1-3 days, Other states: 3-5 days. Orders above ₦50,000 get FREE shipping! 🚚'
+      return 'Delivery time and price depend on the seller location and your state. Each listing shows local and nationwide estimates, and the final delivery amount is calculated at checkout. 🚚'
     }
     if (lowerMsg.includes('scam') || lowerMsg.includes('report')) {
       return 'If you\'ve been scammed, report immediately via "Report Issue" on your order or contact admin at admin@ospolymarket.com within 48 hours for investigation. 🛡️'
@@ -1052,7 +853,7 @@ const SupportChat = () => {
 }
 
 // Product-Seller Chat Component
-const ProductChat = ({ sellerId, productTitle }) => {
+const ProductChat = ({ sellerId, productTitle, productId }) => {
   const { user } = useAuth()
   const { sendMessage } = useChat()
   const [open, setOpen] = useState(false)
@@ -1066,10 +867,14 @@ const ProductChat = ({ sellerId, productTitle }) => {
       return
     }
     
-    await sendMessage(sellerId, message, 'buyer_to_seller')
-    setToast({ message: '✓ Message sent to seller!', type: 'success' })
-    setMessage('')
-    setOpen(false)
+    const result = await sendMessage(sellerId, message, 'buyer_to_seller', productId)
+    if (result?.success) {
+      setToast({ message: '✓ Message sent to seller!', type: 'success' })
+      setMessage('')
+      setOpen(false)
+    } else {
+      setToast({ message: result?.message || 'Unable to send message', type: 'error' })
+    }
   }
   
   if (!user) return null
@@ -1141,8 +946,8 @@ const Header = () => {
           <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto">
             <div className="flex items-center gap-4 text-white text-xs">
               <span>📞 09051103883</span>
-              <span>🚚 Free Shipping on orders ₦50,000+</span>
-              <span>🛡️ 100% Buyer Protection</span>
+              <span>🚚 Local and nationwide delivery</span>
+              <span>🛡️ Reviewed listings and support</span>
             </div>
             <div className="flex items-center gap-4 text-white text-xs">
               {isAuthenticated ? (
@@ -1260,15 +1065,24 @@ const Header = () => {
             }`}>👕 Fashion</button>
             <button onClick={() => navigate('/products?category=kitchen-home')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
               currentCategory === 'kitchen-home' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>🏠 Apartment</button>
+            }`}>🏠 Home</button>
+            <button onClick={() => navigate('/products?category=beauty-health')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
+              currentCategory === 'beauty-health' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
+            }`}>💄 Beauty</button>
+            <button onClick={() => navigate('/products?category=books-education')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
+              currentCategory === 'books-education' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
+            }`}>📚 Books</button>
+            <button onClick={() => navigate('/products?category=groceries')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
+              currentCategory === 'groceries' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
+            }`}>🛒 Groceries</button>
             <button onClick={() => navigate('/products?flash=true')} className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap text-red-600 hover:bg-red-50 rounded">
               ⚡ Flash Deals
             </button>
             {(user?.role === 'seller' || user?.role === 'admin') && (
               <Link to="/seller" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-orange-600 whitespace-nowrap">🏪 Seller</Link>
             )}
-            {user?.role === 'admin' && (
-              <Link to="/admin" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-purple-600 whitespace-nowrap">⚙️ Admin</Link>
+            {(user?.role === 'admin' || user?.role === 'moderator') && (
+              <Link to="/admin" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-purple-600 whitespace-nowrap">⚙️ Moderation</Link>
             )}
           </div>
         </div>
@@ -1320,7 +1134,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div 
-        className="bg-white border border-gray-200 hover:shadow-xl transition-all duration-300 cursor-pointer relative group"
+        className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 cursor-pointer relative group"
         onClick={() => navigate(`/products/${product._id}`)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -1344,8 +1158,11 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
           </div>
         )}
         
-        <div className="relative aspect-square bg-gray-100 flex items-center justify-center overflow-hidden p-4">
-          <span className="text-5xl sm:text-6xl opacity-50">📦</span>
+        <div className="relative aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+          <ProductImage product={product} alt={product.title} className="group-hover:scale-105 transition-transform duration-500" />
+          {product.images?.length > 1 && (
+            <span className="absolute bottom-2 left-2 bg-black/65 text-white text-[10px] px-2 py-1 rounded-full">📷 {product.images.length}</span>
+          )}
           
           {/* Quick Actions on Hover */}
           <div className={`absolute inset-0 bg-black/40 flex items-center justify-center gap-2 transition-opacity ${
@@ -1383,18 +1200,16 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
             <span className="text-green-600">✓</span>
           </div>
           
-          <div className="flex items-center gap-1 sm:gap-3 text-xs text-gray-500 mb-2 sm:mb-3">
-            <span className="text-yellow-500">⭐ {product.rating || 0}</span>
-            <span className="hidden sm:inline">|</span>
-            <span>{product.reviewCount || 0} sold</span>
-            {product.stock <= 5 && product.stock > 0 && (
-              <span className="text-red-500">| Only {product.stock} left!</span>
-            )}
+          <div className="flex items-center gap-1 sm:gap-2 text-xs text-gray-500 mb-2 sm:mb-3 min-w-0">
+            <span className="truncate">📍 {product.location || 'Nigeria'}</span>
+            <span>•</span>
+            <span>{product.views || 0} views</span>
+            {product.stock <= 5 && product.stock > 0 && <span className="text-red-500">• {product.stock} left</span>}
           </div>
           
-          <button onClick={handleAddToCart} 
-            className="w-full py-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded hover:bg-orange-600 transition-colors">
-            🛒 Add to Cart
+          <button onClick={handleAddToCart} disabled={product.stock < 1}
+            className="w-full py-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded hover:bg-orange-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+            {product.stock > 0 ? '🛒 Add to Cart' : 'Out of Stock'}
           </button>
         </div>
       </div>
@@ -1498,95 +1313,65 @@ const HomePage = () => {
 
   return (
     <div className="bg-gray-100 min-h-screen">
-      {/* Hero Section with Background Image */}
-      <div 
-        className="py-8 sm:py-12 px-4 relative overflow-hidden"
-        style={{
-          background: `linear-gradient(135deg, rgba(255,115,0,0.9) 0%, rgba(255,85,0,0.9) 100%)`,
-          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="%23ffffff" fill-opacity="0.1" d="M0,160L48,165.3C96,171,192,181,288,186.7C384,192,480,192,576,181.3C672,171,768,149,864,149.3C960,149,1056,171,1152,176C1248,181,1344,171,1392,165.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'bottom'
-        }}
+      {/* Nationwide marketplace hero with a real responsive background image */}
+      <section
+        className="hero-photo relative overflow-hidden min-h-[520px] sm:min-h-[580px] flex items-center"
+        style={{ backgroundImage: "url('/hero-marketplace.jpg')" }}
+        aria-label="Ospoly Market nationwide shopping marketplace"
       >
-        <div className="max-w-7xl mx-auto relative z-10">
-          <div className="grid md:grid-cols-2 gap-6 sm:gap-8 items-center">
-            <div className="text-white text-center md:text-left">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">
-                Shop Direct from Campus Vendors
-              </h1>
-              <p className="text-sm sm:text-base text-orange-100 mb-4 sm:mb-6">
-                Quality products at unbeatable prices. Verified sellers, secure payments, fast delivery. 🛡️ 100% Buyer Protection!
-              </p>
-              
-              {/* Professional Buttons with Images */}
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center md:justify-start">
-                {isAuthenticated ? (
-                  <>
-                    <button onClick={() => navigate('/products')} 
-                      className="group px-6 sm:px-8 py-3 bg-white text-orange-600 font-bold rounded-xl hover:bg-gray-100 transition-all flex items-center gap-3 shadow-lg">
-                      <img src="/hero-continue.jpg" alt="" className="w-10 h-10 rounded-full object-cover" onError={e => e.target.style.display='none'} />
-                      <span>🛍️ Continue Shopping</span>
-                    </button>
-                    {(user?.role === 'seller' || user?.role === 'admin') ? (
-                      <button onClick={() => navigate('/seller')} 
-                        className="group px-6 sm:px-8 py-3 border-2 border-white text-white font-bold rounded-xl hover:bg-white hover:text-orange-600 transition-all flex items-center gap-3">
-                        <img src="/hero-dashboard.jpg" alt="" className="w-10 h-10 rounded-full object-cover" onError={e => e.target.style.display='none'} />
-                        <span>📊 My Store</span>
-                      </button>
-                    ) : (
-                      <button onClick={() => navigate('/seller')} 
-                        className="group px-6 sm:px-8 py-3 border-2 border-white text-white font-bold rounded-xl hover:bg-white hover:text-orange-600 transition-all flex items-center gap-3">
-                        <img src="/hero-seller.jpg" alt="" className="w-10 h-10 rounded-full object-cover" onError={e => e.target.style.display='none'} />
-                        <span>🚀 Become Seller</span>
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => navigate('/products')} 
-                      className="group px-6 sm:px-8 py-3 bg-white text-orange-600 font-bold rounded-xl hover:bg-gray-100 transition-all flex items-center gap-3 shadow-lg">
-                      <img src="/hero-shopping.jpg" alt="" className="w-10 h-10 rounded-full object-cover" onError={e => e.target.style.display='none'} />
-                      <span>🛍️ Shop Now</span>
-                    </button>
-                    <button onClick={() => navigate('/register')} 
-                      className="group px-6 sm:px-8 py-3 border-2 border-white text-white font-bold rounded-xl hover:bg-white hover:text-orange-600 transition-all flex items-center gap-3">
-                      <img src="/hero-seller.jpg" alt="" className="w-10 h-10 rounded-full object-cover" onError={e => e.target.style.display='none'} />
-                      <span>🚀 Become a Seller</span>
-                    </button>
-                  </>
-                )}
-              </div>
-              
-              {/* Trust Badges */}
-              <div className="flex items-center justify-center md:justify-start gap-4 mt-6 text-xs text-orange-100">
-                <span className="flex items-center gap-1">🔒 Secure Payment</span>
-                <span className="flex items-center gap-1">🛡️ Buyer Protection</span>
-                <span className="flex items-center gap-1">✓ Verified Sellers</span>
-              </div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0b1026]/95 via-[#111827]/80 to-[#111827]/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+        <div className="relative z-10 max-w-7xl mx-auto w-full px-4 py-12 sm:py-16">
+          <div className="max-w-2xl text-white">
+            <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold mb-5">
+              🇳🇬 Built for campus. Open to everyone across Nigeria.
+            </span>
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.08] tracking-tight">
+              Discover trusted products from sellers near you
+            </h1>
+            <p className="text-sm sm:text-lg text-gray-200 mt-5 max-w-xl leading-relaxed">
+              Shop phones, fashion, electronics, home essentials and more. Compare sellers, chat before buying and get delivery within your state or nationwide.
+            </p>
+
+            <form onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('heroSearch'); navigate(q ? `/products?search=${encodeURIComponent(q)}` : '/products') }} className="mt-7 bg-white p-1.5 rounded-xl shadow-2xl flex max-w-xl">
+              <input name="heroSearch" aria-label="Search products" placeholder="What are you looking for?" className="min-w-0 flex-1 px-4 py-3 text-sm text-gray-900 rounded-lg outline-none" />
+              <button type="submit" className="px-5 sm:px-7 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg">Search</button>
+            </form>
+
+            <div className="flex flex-wrap gap-3 mt-5">
+              <button onClick={() => navigate('/products')} className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg">🛍️ Shop all products</button>
+              {isAuthenticated && (user?.role === 'seller' || user?.role === 'admin') ? (
+                <button onClick={() => navigate('/seller')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">📊 Open seller dashboard</button>
+              ) : (
+                <button onClick={() => navigate(isAuthenticated ? '/profile' : '/register')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">🚀 Start selling</button>
+              )}
             </div>
-            
-            <div className="hidden md:grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 max-w-2xl">
               {[
-                ['📱', 'Phones', 'From ₦8,500', 'phones-accessories'], 
-                ['🎧', 'Electronics', 'From ₦15,000', 'electronics'], 
-                ['🪑', 'Furniture', 'From ₦35,000', 'furniture'], 
-                ['👕', 'Fashion', 'From ₦5,000', 'fashion']
-              ].map(([icon, name, price, cat]) => (
-                <button key={name} onClick={() => navigate(`/products?category=${cat}`)} 
-                  className="bg-white rounded-xl p-4 sm:p-6 text-center shadow-xl hover:-translate-y-1 transition-all">
-                  <span className="text-4xl sm:text-5xl block mb-2">{icon}</span>
-                  <p className="font-bold text-gray-800 text-sm sm:text-base">{name}</p>
-                  <p className="text-xs sm:text-sm text-gray-500">{price}</p>
-                </button>
+                ['✓', 'Reviewed listings'],
+                ['💬', 'Chat with sellers'],
+                ['🚚', 'Nationwide delivery'],
+                ['🛡️', 'Report & support']
+              ].map(([icon, label]) => (
+                <div key={label} className="flex items-center gap-2 text-xs sm:text-sm text-gray-200">
+                  <span className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">{icon}</span>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mt-7 text-xs">
+              <span className="text-gray-300">Popular:</span>
+              {[
+                ['Phones', 'phones-accessories'], ['Fashion', 'fashion'], ['Electronics', 'electronics'], ['Home', 'kitchen-home']
+              ].map(([label, category]) => (
+                <button key={category} onClick={() => navigate(`/products?category=${category}`)} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10">{label}</button>
               ))}
             </div>
           </div>
         </div>
-        
-        {/* Decorative elements */}
-        <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 right-0 w-48 h-48 bg-white/10 rounded-full translate-x-1/2 translate-y-1/2"></div>
-      </div>
+      </section>
 
       {/* Flash Deals */}
       {flashDeals.length > 0 && <FlashDealsSection products={flashDeals} />}
@@ -1642,10 +1427,10 @@ const HomePage = () => {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
             {[
-              ['🚚', 'Fast Delivery', 'Quick campus delivery'], 
-              ['💰', 'Secure Payment', 'Escrow protection'], 
-              ['✅', 'Verified Sellers', 'Admin approved'], 
-              ['💸', 'Full Refund', 'Scam protection guaranteed']
+              ['🇳🇬', 'Nationwide Reach', 'Buy and sell beyond campus'],
+              ['📷', 'Clear Listings', 'Multiple images and delivery details'],
+              ['✅', 'Reviewed Sellers', 'Seller and listing approval tools'],
+              ['💬', 'Direct Communication', 'Chat and report issues in one place']
             ].map(([icon, title, desc]) => (
               <div key={title} className="text-center p-4 sm:p-6 bg-gray-50 rounded-lg">
                 <span className="text-3xl sm:text-4xl block mb-2 sm:mb-3">{icon}</span>
@@ -1667,6 +1452,7 @@ const ProductsPage = () => {
   const [sortBy, setSortBy] = useState('newest')
   const [priceRange, setPriceRange] = useState([0, 1000000])
   const [minRating, setMinRating] = useState(0)
+  const [locationFilter, setLocationFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -1675,22 +1461,25 @@ const ProductsPage = () => {
   const category = searchParams.get('category') || ''
   const search = searchParams.get('search') || ''
   const flash = searchParams.get('flash') || ''
+  const seller = searchParams.get('seller') || ''
 
   useEffect(() => {
     setLoading(true)
     let url = `${API_URL}/api/products?limit=50`
-    if (category) url += `&category=${category}`
-    if (search) url += `&search=${search}`
+    if (category) url += `&category=${encodeURIComponent(category)}`
+    if (search) url += `&search=${encodeURIComponent(search)}`
+    if (seller) url += `&seller=${encodeURIComponent(seller)}`
     fetch(url).then(r => r.json()).then(d => { 
       if (d.success) setProducts(d.data.products); 
       setLoading(false) 
-    })
-  }, [category, search, location.search])
+    }).catch(() => setLoading(false))
+  }, [category, search, seller, location.search])
 
   const filteredProducts = products
     .filter(p => p.price >= priceRange[0] && p.price <= priceRange[1])
     .filter(p => (p.rating || 0) >= minRating)
-    .filter(p => flash ? p.isOnFlashSale : true)
+    .filter(p => !locationFilter || (p.location || '').toLowerCase().includes(locationFilter.toLowerCase()))
+    .filter(p => flash ? p.isFlashDeal : true)
     .sort((a, b) => {
       switch (sortBy) {
         case 'price-low': return (a.price || 0) - (b.price || 0)
@@ -1703,6 +1492,7 @@ const ProductsPage = () => {
 
   const getCategoryName = () => {
     if (search) return `Search: "${search}"`
+    if (seller) return products[0]?.seller?.sellerProfile?.storeName ? `Store: ${products[0].seller.sellerProfile.storeName}` : 'Seller Store'
     if (flash) return '⚡ Flash Deals'
     if (category === 'phones-accessories') return '📱 Phones & Accessories'
     if (category === 'kitchen-home') return '🏠 Apartment & Home'
@@ -1757,6 +1547,11 @@ const ProductsPage = () => {
             </div>
             
             <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Seller location:</label>
+              <input value={locationFilter} onChange={e => setLocationFilter(e.target.value)} placeholder="Lagos, Osun, Abuja..." className="w-44 px-3 py-2 border rounded text-sm" />
+            </div>
+            
+            <div className="flex items-center gap-2">
               <label className="text-sm text-gray-600">Min Rating:</label>
               <div className="flex">
                 {[0, 3, 4, 4.5].map(r => (
@@ -1768,7 +1563,7 @@ const ProductsPage = () => {
               </div>
             </div>
             
-            <button onClick={() => { setPriceRange([0, 1000000]); setMinRating(0) }}
+            <button onClick={() => { setPriceRange([0, 1000000]); setMinRating(0); setLocationFilter('') }}
               className="text-sm text-orange-600 hover:underline">Clear Filters</button>
           </div>
         </div>
@@ -1798,6 +1593,7 @@ const ProductDetailPage = () => {
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
   const [reviews, setReviews] = useState([])
+  const [selectedImage, setSelectedImage] = useState(0)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const { addToCart } = useCart()
   const { user } = useAuth()
@@ -1811,13 +1607,9 @@ const ProductDetailPage = () => {
     fetch(`${API_URL}/api/products/${id}`).then(r => r.json()).then(d => { 
       if (d.success) {
         setProduct(d.data.product)
+        setSelectedImage(0)
         addToRecentlyViewed(d.data.product)
-        // Simulate reviews
-        setReviews([
-          { _id: '1', user: { name: 'Adebayo M.' }, rating: 5, comment: 'Great product! Fast delivery and exactly as described. Will buy again!', createdAt: new Date(Date.now() - 86400000), aspectRatings: { quality: 5, delivery: 5, communication: 5 } },
-          { _id: '2', user: { name: 'Chidinma O.' }, rating: 4, comment: 'Good quality for the price. Delivery took 3 days which is acceptable.', createdAt: new Date(Date.now() - 172800000), aspectRatings: { quality: 4, delivery: 4, communication: 4 } },
-          { _id: '3', user: { name: 'Emeka N.' }, rating: 5, comment: 'Excellent seller! Very responsive and product was perfect.', createdAt: new Date(Date.now() - 259200000), aspectRatings: { quality: 5, delivery: 5, communication: 5 } }
-        ])
+        setReviews(d.data.reviews || [])
       }
       setLoading(false) 
     })
@@ -1843,7 +1635,7 @@ const ProductDetailPage = () => {
       user: { name: user?.name || 'You' },
       ...reviewData,
       createdAt: new Date(),
-      isVerified: true
+      isVerified: Boolean(reviewData.isVerified)
     }
     setReviews(prev => [newReview, ...prev])
     setToast({ message: '✓ Thank you for your review!', type: 'success' })
@@ -1884,18 +1676,27 @@ const ProductDetailPage = () => {
           </div>
           
           <div className="grid lg:grid-cols-2 gap-6 sm:gap-8">
-            {/* Product Image */}
-            <div className="bg-white rounded-lg p-4 sm:p-8 flex items-center justify-center relative">
-              <div className="relative">
-                <div className="w-64 sm:w-80 h-64 sm:h-80 bg-gray-100 rounded-lg flex items-center justify-center text-6xl sm:text-8xl">
-                  📦
-                </div>
+            {/* Product image gallery */}
+            <div className="bg-white rounded-xl p-4 sm:p-6 h-fit lg:sticky lg:top-48">
+              <div className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                <ProductImage product={product} index={selectedImage} alt={`${product.title} image ${selectedImage + 1}`} className="object-contain" />
                 {discount > 0 && (
-                  <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 text-sm font-bold rounded">
+                  <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 text-sm font-bold rounded-full shadow">
                     -{discount}% OFF
                   </div>
                 )}
               </div>
+              {product.images?.length > 1 && (
+                <div className="grid grid-cols-5 sm:grid-cols-6 gap-2 mt-3">
+                  {product.images.slice(0, 6).map((image, index) => (
+                    <button key={`${image}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`View product image ${index + 1}`}
+                      className={`aspect-square rounded-lg overflow-hidden border-2 ${selectedImage === index ? 'border-orange-500 ring-2 ring-orange-100' : 'border-gray-200 hover:border-orange-300'}`}>
+                      <ProductImage product={product} index={index} alt={`${product.title} thumbnail ${index + 1}`} />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-3 text-center">📍 Ships from {product.location || 'Nigeria'}</p>
             </div>
             
             {/* Product Info */}
@@ -1959,11 +1760,12 @@ const ProductDetailPage = () => {
                   </div>
                 </div>
                 
-                {/* Buyer Protection */}
+                {/* Marketplace safety and delivery */}
                 <div className="bg-blue-50 p-3 rounded-lg mb-4 flex items-start gap-2">
                   <span className="text-blue-600">🛡️</span>
-                  <div className="text-xs text-blue-700">
-                    <strong>100% Buyer Protection:</strong> Full refund if seller doesn't deliver within 7 days. Report issues within 48 hours.
+                  <div className="text-xs text-blue-700 space-y-1">
+                    <p><strong>Safer shopping:</strong> inspect or confirm your order before paying on delivery while verified Paystack payments are being prepared.</p>
+                    <p>Delivery estimate: ₦{(product.shipping?.localFee || 1000).toLocaleString()} within seller's state; ₦{(product.shipping?.nationwideFee || 2500).toLocaleString()} nationwide.</p>
                   </div>
                 </div>
                 
@@ -1986,8 +1788,8 @@ const ProductDetailPage = () => {
                 </div>
                 
                 {/* Chat with Seller */}
-                {user && product.seller?._id && (
-                  <ProductChat sellerId={product.seller._id} productTitle={product.title} />
+                {user && product.seller?._id && product.chatEnabled !== false && product.seller?.sellerProfile?.chatEnabled !== false && (
+                  <ProductChat sellerId={product.seller._id} productId={product._id} productTitle={product.title} />
                 )}
               </div>
               
@@ -2114,15 +1916,10 @@ const CartPage = () => {
     </div>
   )
 
-  // Dynamic shipping message
-  const getShippingMessage = () => {
-    if (summary.subtotal >= 50000) return { text: 'FREE Shipping!', color: 'text-green-600' }
-    if (summary.subtotal >= 25000) return { text: '₦250 shipping', color: 'text-yellow-600' }
-    if (summary.subtotal >= 10000) return { text: '₦350 shipping', color: 'text-yellow-600' }
-    return { text: '₦500 shipping', color: 'text-gray-600' }
+  const shippingMsg = {
+    text: summary.shipping > 0 ? `₦${summary.shipping.toLocaleString()} estimate` : 'Calculated at checkout',
+    color: 'text-blue-600'
   }
-
-  const shippingMsg = getShippingMessage()
 
   return (
     <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
@@ -2133,7 +1930,7 @@ const CartPage = () => {
           <div className="lg:col-span-2 space-y-3 sm:space-y-4">
             {items.map(item => (
               <div key={item.product?._id} className="bg-white rounded-lg p-3 sm:p-4 flex gap-3 sm:gap-4 border border-gray-200">
-                <div className="w-20 sm:w-32 h-20 sm:h-32 bg-gray-100 rounded flex items-center justify-center text-3xl sm:text-4xl flex-shrink-0">📦</div>
+                <div className="w-20 sm:w-32 h-20 sm:h-32 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><ProductImage product={item.product} alt={item.product?.title} /></div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-gray-800 text-sm sm:text-base mb-1">{item.product?.title}</h3>
                   <p className="text-xs sm:text-sm text-gray-500 mb-2">Supplier: {item.product?.seller?.name}</p>
@@ -2160,22 +1957,16 @@ const CartPage = () => {
             <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm border-b pb-3 sm:pb-4 mb-3 sm:mb-4">
               <div className="flex justify-between"><span className="text-gray-600">Subtotal ({summary.itemCount} items)</span><span className="font-bold">₦{summary.subtotal?.toLocaleString()}</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Shipping</span><span className={`font-bold ${shippingMsg.color}`}>{shippingMsg.text}</span></div>
-              {summary.subtotal < 50000 && (
-                <p className="text-xs text-green-600">Add ₦{(50000 - summary.subtotal).toLocaleString()} more for FREE shipping! 🎉</p>
-              )}
-              <div className="flex justify-between text-base sm:text-lg font-bold border-t pt-2 sm:pt-3"><span>Total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
+              <p className="text-xs text-gray-500">Final delivery is calculated from each seller's location and your delivery state.</p>
+              <div className="flex justify-between text-base sm:text-lg font-bold border-t pt-2 sm:pt-3"><span>Estimated total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
             </div>
             
-            {/* Coupon Code */}
-            <div className="mb-4">
-              <div className="flex gap-2">
-                <input placeholder="Coupon code" className="flex-1 px-3 py-2 border rounded text-sm" />
-                <button className="px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded hover:bg-gray-900">Apply</button>
-              </div>
+            <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mb-4">
+              <p className="text-xs text-blue-800">🚚 Delivery prices are set per seller for local and nationwide orders. Enter your state at checkout for the final amount.</p>
             </div>
             
-            <div className="bg-green-50 p-3 rounded-lg mb-4">
-              <p className="text-xs text-green-700">🛡️ Your payment is protected. Full refund if seller doesn't deliver.</p>
+            <div className="bg-orange-50 p-3 rounded-lg mb-4">
+              <p className="text-xs text-orange-800">🛡️ Current payment method is Pay on Delivery. Inspect or confirm your order before paying.</p>
             </div>
             
             <button onClick={() => navigate('/checkout')} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 text-sm sm:text-base">
@@ -2197,6 +1988,7 @@ const CheckoutPage = () => {
   const [toast, setToast] = useState(null)
   const [showPayment, setShowPayment] = useState(false)
   const [pendingOrderId, setPendingOrderId] = useState(null)
+  const [pendingOrderAmount, setPendingOrderAmount] = useState(0)
   const [orderItems, setOrderItems] = useState([])
   const navigate = useNavigate()
 
@@ -2225,6 +2017,7 @@ const CheckoutPage = () => {
       setLoading(false)
       if (data.success) { 
         setPendingOrderId(data.data.order._id)
+        setPendingOrderAmount(data.data.order.finalAmount || summary.total)
         setOrderItems(data.data.order.items || [])
         setShowPayment(true) 
       }
@@ -2234,14 +2027,14 @@ const CheckoutPage = () => {
 
   const handlePaymentSuccess = () => {
     clearCart()
-    setToast({ message: '🎉 Order placed and paid successfully!', type: 'success' })
-    setTimeout(() => navigate('/orders'), 2000)
+    setToast({ message: '✓ Order placed. Payment is due only on confirmed delivery.', type: 'success' })
+    setTimeout(() => navigate('/orders'), 800)
   }
 
   return (
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      {showPayment && <PaymentModal isOpen={showPayment} onClose={() => setShowPayment(false)} amount={summary.total} orderId={pendingOrderId} orderItems={orderItems} onSuccess={handlePaymentSuccess} />}
+      {showPayment && <PaymentModal isOpen={showPayment} onClose={() => { setShowPayment(false); navigate('/products') }} amount={pendingOrderAmount} orderId={pendingOrderId} orderItems={orderItems} onSuccess={handlePaymentSuccess} />}
       
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-4xl mx-auto px-4">
@@ -2280,16 +2073,17 @@ const CheckoutPage = () => {
               <h2 className="text-lg font-bold text-gray-800 mb-4">📋 Order Summary</h2>
               <div className="space-y-2 text-sm border-b pb-4 mb-4">
                 <div className="flex justify-between"><span>{items.length} item(s)</span><span className="font-bold">₦{summary.subtotal?.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Shipping</span><span className="font-bold text-green-600">{summary.subtotal >= 50000 ? 'FREE' : '₦' + summary.shipping?.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Estimated shipping</span><span className="font-bold text-blue-600">₦{(summary.shipping || 0).toLocaleString()}</span></div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
               </div>
               
-              <div className="bg-green-50 p-3 rounded-lg mb-4">
-                <p className="text-xs text-green-700">🔒 <strong>Escrow Protection:</strong> Your payment is held safely until you confirm delivery.</p>
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mb-4">
+                <p className="text-xs font-bold text-blue-900">Temporary checkout: Pay on Delivery</p>
+                <p className="text-xs text-blue-700 mt-1">Online Paystack payment will be added after business verification. Never send money to an unverified account.</p>
               </div>
               
               <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50">
-                {loading ? 'Processing...' : '💳 Proceed to Payment'}
+                {loading ? 'Placing order...' : '✓ Place Pay-on-Delivery Order'}
               </button>
             </div>
           </div>
@@ -2375,7 +2169,9 @@ const MyOrdersPage = () => {
                 
                 <div className="flex gap-3 sm:gap-4 mb-4 overflow-x-auto">
                   {order.items.slice(0, 4).map((item, i) => (
-                    <div key={i} className="w-16 sm:w-20 h-16 sm:h-20 bg-gray-100 rounded flex items-center justify-center text-2xl flex-shrink-0">📦</div>
+                    <div key={i} className="w-16 sm:w-20 h-16 sm:h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                      <ProductImage product={{ title: item.title, images: [item.image || getProductImage(item.product)] }} alt={item.title || 'Ordered product'} />
+                    </div>
                   ))}
                   {order.items.length > 4 && (
                     <div className="w-16 sm:w-20 h-16 sm:h-20 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500 flex-shrink-0">+{order.items.length - 4}</div>
@@ -2395,7 +2191,7 @@ const MyOrdersPage = () => {
                 
                 {/* Actions */}
                 <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
-                  <button onClick={() => navigate(`/products/${order.items[0]?.productId}`)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200">
+                  <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200">
                     📦 View Order Details
                   </button>
                   {order.status === 'delivered' && (
@@ -2457,7 +2253,7 @@ const WishlistPage = () => {
             {wishlist.map(product => (
               <div key={product._id} className="bg-white rounded-lg p-4 border relative">
                 <button onClick={() => removeFromWishlist(product._id)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded-full hover:bg-red-200">✕</button>
-                <div className="w-full aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-4xl mb-3">📦</div>
+                <div className="w-full aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3"><ProductImage product={product} alt={product.title} /></div>
                 <p className="font-bold text-lg" style={{ color: colors.primary }}>₦{product.price?.toLocaleString()}</p>
                 <p className="text-sm text-gray-600 line-clamp-2 mb-2">{product.title}</p>
                 <div className="flex gap-2">
@@ -2533,14 +2329,11 @@ const LoginPage = () => {
           
           <div className="flex items-center justify-between mt-4 text-sm">
             <Link to="/register" className="text-orange-600 font-bold hover:underline">Create Account</Link>
-            <a href="#" className="text-gray-500 hover:text-orange-600">Forgot Password?</a>
+            <a href="mailto:support@ospolymarket.com" className="text-gray-500 hover:text-orange-600">Need login help?</a>
           </div>
           
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-            <p className="font-bold text-gray-700 mb-2">Demo Accounts:</p>
-            <p>Buyer: buyer@ospolymarket.com</p>
-            <p>Seller: seller@ospolymarket.com</p>
-            <p>Admin: admin@ospolymarket.com</p>
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+            🔒 Never share your password, OTP, card PIN or login code with a buyer, seller or support agent.
           </div>
         </div>
       </div>
@@ -2650,10 +2443,17 @@ const SellerDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview')
   const [toast, setToast] = useState(null)
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [editingProduct, setEditingProduct] = useState(null)
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [withdrawLoading, setWithdrawLoading] = useState(false)
-  const [productForm, setProductForm] = useState({ title: '', description: '', price: '', originalPrice: '', stock: '', category: 'phones-accessories', condition: 'new', location: '' })
+  const [productForm, setProductForm] = useState({
+    title: '', description: '', price: '', originalPrice: '', stock: '', brand: '', tags: '',
+    category: 'phones-accessories', condition: 'new', location: '',
+    localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
+    pickupAvailable: true, freeShipping: false, chatEnabled: true
+  })
+  const [productImages, setProductImages] = useState([])
   const [uploading, setUploading] = useState(false)
   const navigate = useNavigate()
 
@@ -2727,31 +2527,105 @@ const SellerDashboard = () => {
     }
   }
 
+  const handleImageSelection = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!files.length) return
+    if (productImages.length + files.length > 6) {
+      setToast({ message: 'You can upload a maximum of 6 images', type: 'error' })
+      return
+    }
+    const invalid = files.find(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)
+    if (invalid) {
+      setToast({ message: 'Use JPG, PNG or WebP images up to 5MB each', type: 'error' })
+      return
+    }
+    const withPreviews = await Promise.all(files.map(file => new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => resolve({ file, preview: reader.result, id: `${file.name}-${file.lastModified}-${Math.random()}` })
+      reader.readAsDataURL(file)
+    })))
+    setProductImages(current => [...current, ...withPreviews])
+  }
+
+  const removeProductImage = (id) => setProductImages(current => current.filter(image => image.id !== id))
+  const makeCoverImage = (id) => setProductImages(current => {
+    const selected = current.find(image => image.id === id)
+    return selected ? [selected, ...current.filter(image => image.id !== id)] : current
+  })
+
+  const openEditProduct = (product) => {
+    setEditingProduct(product)
+    setProductForm({
+      title: product.title || '', description: product.description || '', price: product.price || '', originalPrice: product.originalPrice || '',
+      stock: product.stock ?? '', brand: product.brand || '', tags: (product.tags || []).join(', '), category: product.category || 'other',
+      condition: product.condition || 'new', location: product.location || '', localDeliveryFee: product.shipping?.localFee ?? '1000',
+      nationwideDeliveryFee: product.shipping?.nationwideFee ?? '2500', processingDays: product.shipping?.processingDays ?? '2',
+      pickupAvailable: product.shipping?.pickupAvailable !== false, freeShipping: Boolean(product.shipping?.freeShipping), chatEnabled: product.chatEnabled !== false
+    })
+    setProductImages((product.images || []).map((url, index) => ({ existingUrl: url, preview: url, file: null, id: `existing-${index}-${url}` })))
+    setShowAddProduct(true)
+  }
+
+  const resetProductForm = () => {
+    setProductForm({
+      title: '', description: '', price: '', originalPrice: '', stock: '', brand: '', tags: '',
+      category: 'phones-accessories', condition: 'new', location: '',
+      localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
+      pickupAvailable: true, freeShipping: false, chatEnabled: true
+    })
+    setProductImages([])
+    setEditingProduct(null)
+  }
+
   const handleAddProduct = async (e) => {
     e.preventDefault()
+    if (productImages.length < 1) {
+      setToast({ message: 'Upload at least one clear product image', type: 'error' })
+      return
+    }
+    if (productForm.description.trim().length < 20) {
+      setToast({ message: 'Write a more detailed product description', type: 'error' })
+      return
+    }
     setUploading(true)
     try {
-      const res = await fetch(`${API_URL}/api/products`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, 
-        body: JSON.stringify({
-          ...productForm,
-          price: parseFloat(productForm.price),
-          originalPrice: productForm.originalPrice ? parseFloat(productForm.originalPrice) : undefined,
-          stock: parseInt(productForm.stock)
-        })
+      const formData = new FormData()
+      Object.entries(productForm).forEach(([key, value]) => formData.append(key, String(value)))
+      formData.append('existingImages', JSON.stringify(productImages.filter(image => image.existingUrl).map(image => image.existingUrl)))
+      productImages.filter(image => image.file).forEach(({ file }) => formData.append('images', file))
+      const res = await fetch(editingProduct ? `${API_URL}/api/products/${editingProduct._id}` : `${API_URL}/api/products`, {
+        method: editingProduct ? 'PUT' : 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        body: formData
       })
       const data = await res.json()
       setUploading(false)
       if (data.success) {
-        setToast({ message: '✓ Product submitted! Awaiting admin approval.', type: 'success' })
+        setToast({ message: data.message || '✓ Product submitted for approval!', type: 'success' })
         setShowAddProduct(false)
-        setProductForm({ title: '', description: '', price: '', originalPrice: '', stock: '', category: 'phones-accessories', condition: 'new', location: '' })
-        fetch(`${API_URL}/api/products/seller/my-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-          .then(r => r.json())
-          .then(d => { if (d.success) setProducts(d.data.products) })
-      } else setToast({ message: data.message || 'Failed to add product', type: 'error' })
-    } catch { setUploading(false); setToast({ message: 'Failed to add product', type: 'error' }) }
+        resetProductForm()
+        const refreshed = await fetch(`${API_URL}/api/products/seller/my-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
+        if (refreshed.success) setProducts(refreshed.data.products)
+      } else {
+        setToast({ message: data.message || 'Failed to add product', type: 'error' })
+      }
+    } catch {
+      setUploading(false)
+      setToast({ message: 'Upload failed. Check your connection and image-storage setup.', type: 'error' })
+    }
+  }
+
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`Delete “${product.title}”? This cannot be undone.`)) return
+    try {
+      const res = await fetch(`${API_URL}/api/products/${product._id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      const data = await res.json()
+      if (data.success) {
+        setProducts(current => current.filter(item => item._id !== product._id))
+        setToast({ message: 'Product deleted', type: 'success' })
+      } else setToast({ message: data.message || 'Unable to delete product', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
   if (!user || (user.role !== 'seller' && user.role !== 'admin')) return null
@@ -2839,67 +2713,123 @@ const SellerDashboard = () => {
           {/* Add Product Modal */}
           {showAddProduct && (
             <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="bg-white rounded-2xl max-w-3xl w-full p-5 sm:p-7 max-h-[92vh] overflow-y-auto shadow-2xl">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">➕ Add New Product</h2>
-                  <button onClick={() => setShowAddProduct(false)} className="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+                  <h2 className="text-xl font-bold text-gray-800">{editingProduct ? '✏️ Edit Product' : '➕ Add New Product'}</h2>
+                  <button onClick={() => { setShowAddProduct(false); resetProductForm() }} className="text-gray-500 hover:text-gray-700 text-2xl" aria-label="Close product form">✕</button>
                 </div>
-                <form onSubmit={handleAddProduct} className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Product Title *</label>
-                    <input value={productForm.title} onChange={e => setProductForm({...productForm, title: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="e.g. iPhone 14 Pro Max" required />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Description *</label>
-                    <textarea value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" rows={4} placeholder="Describe your product..." required />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={handleAddProduct} className="space-y-6">
+                  {/* Multiple product image upload */}
+                  <section>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-bold text-gray-800">Product images * <span className="font-normal text-gray-500">({productImages.length}/6)</span></label>
+                      <span className="text-xs text-gray-500">First image is the cover</span>
+                    </div>
+                    <label className="block border-2 border-dashed border-orange-300 bg-orange-50/50 hover:bg-orange-50 rounded-xl p-5 text-center cursor-pointer">
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImageSelection} className="sr-only" disabled={productImages.length >= 6} />
+                      <span className="text-3xl block mb-2">📷</span>
+                      <span className="text-sm font-bold text-orange-700">Click to upload multiple images</span>
+                      <span className="text-xs text-gray-500 block mt-1">JPG, PNG or WebP • maximum 6 images • 5MB each</span>
+                      <span className="text-xs text-gray-500 block">Use bright, clear photos from different angles. Do not use screenshots with phone numbers.</span>
+                    </label>
+                    {productImages.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                        {productImages.map((image, index) => (
+                          <div key={image.id} className={`relative rounded-xl overflow-hidden border-2 bg-gray-100 aspect-square ${index === 0 ? 'border-orange-500' : 'border-gray-200'}`}>
+                            <img src={image.preview} alt={`Upload preview ${index + 1}`} className="w-full h-full object-cover" />
+                            <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-full">{index === 0 ? 'Cover' : `Image ${index + 1}`}</div>
+                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex gap-1 justify-end">
+                              {index !== 0 && <button type="button" onClick={() => makeCoverImage(image.id)} className="text-[10px] bg-white text-gray-800 px-2 py-1 rounded">Make cover</button>}
+                              <button type="button" onClick={() => removeProductImage(image.id)} className="text-[10px] bg-red-500 text-white px-2 py-1 rounded">Remove</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Price (₦) *</label>
-                      <input type="number" value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="85000" required />
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Product title *</label>
+                      <input value={productForm.title} onChange={e => setProductForm({...productForm, title: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Example: Samsung Galaxy A54 128GB – New" minLength={5} maxLength={180} required />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Original Price (₦)</label>
-                      <input type="number" value={productForm.originalPrice} onChange={e => setProductForm({...productForm, originalPrice: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="100000" />
+                      <div className="flex justify-between"><label className="text-sm font-medium text-gray-700 mb-1 block">Detailed description *</label><span className="text-xs text-gray-400">{productForm.description.length}/5000</span></div>
+                      <textarea value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" rows={5} maxLength={5000} placeholder="Describe condition, size, colour, included accessories, defects, warranty and what makes the item useful..." required />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  </section>
+
+                  <section className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Stock *</label>
-                      <input type="number" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="10" required />
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Selling price (₦) *</label>
+                      <input type="number" min="1" value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="85000" required />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Location</label>
-                      <input value={productForm.location} onChange={e => setProductForm({...productForm, location: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Lagos" />
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Original price (₦)</label>
+                      <input type="number" min="0" value={productForm.originalPrice} onChange={e => setProductForm({...productForm, originalPrice: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="100000" />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Available stock *</label>
+                      <input type="number" min="0" max="99999" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="10" required />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Seller location/state *</label>
+                      <input value={productForm.location} onChange={e => setProductForm({...productForm, location: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Example: Osun State" required />
+                    </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Category *</label>
-                      <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" required>
-                        <option value="phones-accessories">📱 Phones</option>
+                      <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" required>
+                        <option value="phones-accessories">📱 Phones & Accessories</option>
                         <option value="electronics">🎧 Electronics</option>
-                        <option value="furniture">🪑 Furniture</option>
                         <option value="fashion">👕 Fashion</option>
-                        <option value="kitchen-home">🏠 Apartment</option>
+                        <option value="kitchen-home">🏠 Home & Kitchen</option>
+                        <option value="furniture">🪑 Furniture</option>
+                        <option value="beauty-health">💄 Beauty & Health</option>
+                        <option value="books-education">📚 Books & Education</option>
+                        <option value="groceries">🛒 Groceries</option>
+                        <option value="sports-fitness">⚽ Sports & Fitness</option>
+                        <option value="baby-kids">🧸 Baby & Kids</option>
+                        <option value="automotive">🚗 Automotive</option>
+                        <option value="other">📦 Other</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Condition *</label>
-                      <select value={productForm.condition} onChange={e => setProductForm({...productForm, condition: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" required>
-                        <option value="new">New</option>
-                        <option value="used">Used</option>
-                        <option value="refurbished">Refurbished</option>
+                      <select value={productForm.condition} onChange={e => setProductForm({...productForm, condition: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" required>
+                        <option value="new">New</option><option value="used">Used</option><option value="refurbished">Refurbished</option>
                       </select>
                     </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Brand</label>
+                      <input value={productForm.brand} onChange={e => setProductForm({...productForm, brand: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Samsung, Nike, Generic..." />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Search tags</label>
+                      <input value={productForm.tags} onChange={e => setProductForm({...productForm, tags: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="android, 5g, student phone" />
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <h3 className="font-bold text-blue-900 mb-3">🚚 Delivery settings</h3>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div><label className="text-xs text-blue-800 mb-1 block">Within your state (₦)</label><input type="number" min="0" value={productForm.localDeliveryFee} onChange={e => setProductForm({...productForm, localDeliveryFee: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                      <div><label className="text-xs text-blue-800 mb-1 block">Nationwide delivery (₦)</label><input type="number" min="0" value={productForm.nationwideDeliveryFee} onChange={e => setProductForm({...productForm, nationwideDeliveryFee: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                      <div><label className="text-xs text-blue-800 mb-1 block">Processing days</label><input type="number" min="0" max="30" value={productForm.processingDays} onChange={e => setProductForm({...productForm, processingDays: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                    </div>
+                    <div className="flex flex-wrap gap-4 mt-3 text-xs text-blue-900">
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={productForm.pickupAvailable} onChange={e => setProductForm({...productForm, pickupAvailable: e.target.checked})} /> Pickup available</label>
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={productForm.freeShipping} onChange={e => setProductForm({...productForm, freeShipping: e.target.checked})} /> Free delivery</label>
+                      <label className="flex items-center gap-2"><input type="checkbox" checked={productForm.chatEnabled} onChange={e => setProductForm({...productForm, chatEnabled: e.target.checked})} /> Allow buyer chat</label>
+                    </div>
+                  </section>
+
+                  <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+                    <p className="text-xs text-yellow-800">📋 Your product will remain pending until an admin checks its images, description, price and prohibited-item compliance.</p>
                   </div>
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <p className="text-xs text-blue-700">📋 <strong>Note:</strong> Your product will be reviewed by admin before it appears on the site.</p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => setShowAddProduct(false)} className="flex-1 py-3 bg-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-400">Cancel</button>
+                  <div className="flex gap-3 sticky bottom-0 bg-white pt-3 border-t">
+                    <button type="button" onClick={() => { setShowAddProduct(false); resetProductForm() }} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200">Cancel</button>
                     <button type="submit" disabled={uploading} className="flex-1 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50">
-                      {uploading ? 'Submitting...' : '✓ Submit for Approval'}
+                      {uploading ? `Uploading ${productImages.filter(image => image.file).length} new image(s)...` : editingProduct ? '✓ Save changes for approval' : '✓ Submit for approval'}
                     </button>
                   </div>
                 </form>
@@ -2945,19 +2875,32 @@ const SellerDashboard = () => {
                             <th className="pb-4 pr-4">Product</th>
                             <th className="pb-4 pr-4">Price</th>
                             <th className="pb-4 pr-4">Stock</th>
-                            <th className="pb-4">Status</th>
+                            <th className="pb-4 pr-4">Status</th>
+                            <th className="pb-4">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {products.map(p => (
                             <tr key={p._id} className="border-b text-sm">
-                              <td className="py-4 pr-4">{p.title}</td>
+                              <td className="py-4 pr-4">
+                                <div className="flex items-center gap-3 min-w-[220px]">
+                                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0"><ProductImage product={p} alt={p.title} /></div>
+                                  <div><p className="font-medium line-clamp-2">{p.title}</p><p className="text-xs text-gray-400">{p.images?.length || 0} image(s)</p></div>
+                                </div>
+                              </td>
                               <td className="py-4 pr-4 font-bold">₦{p.price?.toLocaleString()}</td>
                               <td className="py-4 pr-4">{p.stock}</td>
-                              <td className="py-4">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.isApproved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                  {p.isApproved ? '✓ Active' : '⏳ Pending'}
+                              <td className="py-4 pr-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.isApproved ? 'bg-green-100 text-green-700' : p.isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {p.isApproved ? '✓ Active' : p.isRejected ? '✕ Needs changes' : '⏳ Pending'}
                                 </span>
+                                {p.approvalNote && <p className="text-[10px] text-red-600 mt-1 max-w-[180px]">{p.approvalNote}</p>}
+                              </td>
+                              <td className="py-4">
+                                <div className="flex gap-2">
+                                  <button onClick={() => openEditProduct(p)} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100">Edit</button>
+                                  <button onClick={() => handleDeleteProduct(p)} className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100">Delete</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -2985,7 +2928,7 @@ const SellerDashboard = () => {
                               <p className="text-xs sm:text-sm text-gray-500">{order.buyer?.name} | {order.buyer?.phone}</p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-sm sm:text-base">₦{order.finalAmount?.toLocaleString()}</p>
+                              <p className="font-bold text-sm sm:text-base">₦{(order.sellerAmount || order.finalAmount)?.toLocaleString()}</p>
                               <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : order.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{order.status}</span>
                             </div>
                           </div>
@@ -3041,22 +2984,26 @@ const AdminDashboard = () => {
   const [pendingProducts, setPendingProducts] = useState([])
   const [pendingSellers, setPendingSellers] = useState([])
   const [reports, setReports] = useState([])
+  const [supportTickets, setSupportTickets] = useState([])
+  const [adminChats, setAdminChats] = useState([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!user || user.role !== 'admin') { navigate('/login'); return }
+    if (!user || !['admin', 'moderator'].includes(user.role)) { navigate('/login'); return }
     
     const fetchData = async () => {
       try {
-        const [statsRes, productsRes, sellersRes, reportsRes, allProductsRes] = await Promise.all([
+        const [statsRes, productsRes, sellersRes, reportsRes, allProductsRes, ticketsRes, chatsRes] = await Promise.all([
           fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
           fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { products: [] } })),
           fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { sellers: [] } })),
           fetch(`${API_URL}/api/admin/reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { reports: [] } })),
-          fetch(`${API_URL}/api/products?isApproved=false&limit=50`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false }))
+          fetch(`${API_URL}/api/products?isApproved=false&limit=50`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+          fetch(`${API_URL}/api/admin/support-tickets`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+          fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false }))
         ])
         
         if (statsRes.success) setStats(statsRes.data)
@@ -3068,6 +3015,8 @@ const AdminDashboard = () => {
         
         if (sellersRes.success) setPendingSellers(sellersRes.data.sellers || [])
         if (reportsRes.success) setReports(reportsRes.data.reports || [])
+        if (ticketsRes.success) setSupportTickets(ticketsRes.data.tickets || [])
+        if (chatsRes.success) setAdminChats(chatsRes.data.chats || [])
         
         setLoading(false)
       } catch (error) {
@@ -3126,7 +3075,7 @@ const AdminDashboard = () => {
     } catch { setToast({ message: 'Failed to process refund', type: 'error' }) }
   }
 
-  if (!user || user.role !== 'admin') return null
+  if (!user || !['admin', 'moderator'].includes(user.role)) return null
 
   return (
     <>
@@ -3192,7 +3141,7 @@ const AdminDashboard = () => {
                       {pendingProducts.map(p => (
                         <div key={p._id} className="border rounded-lg p-4 flex items-center justify-between flex-wrap gap-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-3xl">📦</div>
+                            <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><ProductImage product={p} alt={p.title} /></div>
                             <div>
                               <p className="font-bold text-sm">{p.title}</p>
                               <p className="text-xs text-gray-500">₦{p.price?.toLocaleString()} | Stock: {p.stock}</p>
@@ -3223,7 +3172,7 @@ const AdminDashboard = () => {
                             {s.sellerProfile?.storeName && <p className="text-xs text-blue-600">Store: {s.sellerProfile.storeName}</p>}
                           </div>
                           <div className="flex gap-2">
-                            <button onClick={() => handleApproveSeller(s._id)} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve</button>
+                            {user.role === 'admin' ? <button onClick={() => handleApproveSeller(s._id)} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve</button> : <span className="text-xs text-gray-500">Admin approval required</span>}
                           </div>
                         </div>
                       ))}
@@ -3247,8 +3196,10 @@ const AdminDashboard = () => {
                           <p className="text-xs text-gray-600 mb-2">{r.reason}</p>
                           <p className="text-xs text-gray-500 mb-3">Reported: {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Recently'}</p>
                           <div className="flex gap-2">
-                            <button onClick={() => handleProcessRefund(r.orderId, 'approve-refund')} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve Refund</button>
-                            <button onClick={() => handleProcessRefund(r.orderId, 'reject-refund')} className="px-4 py-2 bg-red-500 text-white text-xs font-bold rounded hover:bg-red-600">✕ Reject</button>
+                            {user.role === 'admin' ? <>
+                              <button onClick={() => handleProcessRefund(r.orderId, 'approve-refund')} className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded hover:bg-green-600">✓ Approve Refund</button>
+                              <button onClick={() => handleProcessRefund(r.orderId, 'reject-refund')} className="px-4 py-2 bg-red-500 text-white text-xs font-bold rounded hover:bg-red-600">✕ Reject</button>
+                            </> : <span className="text-xs text-gray-500">Moderator review only — admin makes the final decision.</span>}
                           </div>
                         </div>
                       ))}
@@ -3258,8 +3209,32 @@ const AdminDashboard = () => {
               )}
 
               {activeTab === 'chats' && (
-                <div>
-                  <p className="text-center py-8 text-gray-500 text-sm">Support tickets and buyer-seller chats appear here. Check AI responses and escalate as needed.</p>
+                <div className="space-y-8">
+                  <section>
+                    <h3 className="font-bold text-gray-900 mb-3">🎫 Support tickets ({supportTickets.length})</h3>
+                    {supportTickets.length ? <div className="space-y-3">
+                      {supportTickets.map(ticket => (
+                        <div key={ticket._id} className="border rounded-xl p-4">
+                          <div className="flex justify-between gap-3 flex-wrap"><div><p className="font-bold text-sm">{ticket.subject}</p><p className="text-xs text-gray-500">{ticket.user?.name} • {ticket.user?.email}</p></div><span className={`text-xs px-2 py-1 h-fit rounded-full ${ticket.priority === 'high' || ticket.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{ticket.status} / {ticket.priority}</span></div>
+                          <p className="text-sm text-gray-700 mt-3 whitespace-pre-line">{ticket.message}</p>
+                          <p className="text-xs text-gray-400 mt-2">{new Date(ticket.createdAt).toLocaleString()}</p>
+                        </div>
+                      ))}
+                    </div> : <p className="text-center py-6 text-gray-500 text-sm">No support tickets</p>}
+                  </section>
+                  <section>
+                    <h3 className="font-bold text-gray-900 mb-3">💬 Buyer–seller conversations ({adminChats.length})</h3>
+                    {adminChats.length ? <div className="space-y-3">
+                      {adminChats.map(chat => {
+                        const lastMessage = chat.messages?.[chat.messages.length - 1]
+                        return <div key={chat._id} className="border rounded-xl p-4">
+                          <div className="flex justify-between gap-3"><div><p className="font-bold text-sm">{chat.product?.title || 'Support conversation'}</p><p className="text-xs text-gray-500">{chat.participants?.map(person => person.sellerProfile?.storeName || person.name).join(' ↔ ')}</p></div><span className="text-xs text-gray-400">{chat.isOpen ? 'Open' : 'Closed'}</span></div>
+                          <p className="text-sm text-gray-700 mt-3 bg-gray-50 p-3 rounded-lg">{lastMessage?.message || 'No messages'}</p>
+                          {lastMessage?.createdAt && <p className="text-xs text-gray-400 mt-2">Last activity: {new Date(lastMessage.createdAt).toLocaleString()}</p>}
+                        </div>
+                      })}
+                    </div> : <p className="text-center py-6 text-gray-500 text-sm">No buyer–seller conversations</p>}
+                  </section>
                 </div>
               )}
             </div>
@@ -3274,6 +3249,7 @@ const AdminDashboard = () => {
 const ProfilePage = () => {
   const { user, updateUser } = useAuth()
   const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '', storeName: '' })
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
@@ -3305,6 +3281,26 @@ const ProfilePage = () => {
       if (data.success) { updateUser(data.data.user); setToast({ message: '✓ Profile updated!', type: 'success' }) }
       else setToast({ message: data.message || 'Failed', type: 'error' })
     } catch { setLoading(false); setToast({ message: 'Failed to update', type: 'error' }) }
+  }
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault()
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setToast({ message: 'New passwords do not match', type: 'error' }); return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/auth/password`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword })
+      })
+      const data = await res.json()
+      setLoading(false)
+      if (data.success) {
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
+        setToast({ message: '✓ Password changed successfully', type: 'success' })
+      } else setToast({ message: data.message || 'Unable to change password', type: 'error' })
+    } catch { setLoading(false); setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
   if (!user) return null
@@ -3403,19 +3399,16 @@ const ProfilePage = () => {
               )}
               
               {activeTab === 'security' && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <h4 className="font-bold text-gray-800 mb-2">🔐 Security Status</h4>
-                    <div className="flex items-center gap-2 text-sm text-green-700">
-                      <span>✓</span>
-                      <span>Your account is secure</span>
-                    </div>
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <h4 className="font-bold text-red-900 mb-1">🔐 Protect your account</h4>
+                    <p className="text-xs text-red-700">Use a unique password. If this was a demo account, change the old public password immediately.</p>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <h4 className="font-bold text-gray-800 mb-2">🔑 Password</h4>
-                    <button className="px-4 py-2 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-900 text-sm">Change Password</button>
-                  </div>
-                </div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Current password</label><input type="password" autoComplete="current-password" value={passwordForm.currentPassword} onChange={e => setPasswordForm({...passwordForm, currentPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">New password</label><input type="password" autoComplete="new-password" minLength={10} value={passwordForm.newPassword} onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="10+ characters with uppercase, lowercase and number" required /></div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Confirm new password</label><input type="password" autoComplete="new-password" minLength={10} value={passwordForm.confirmPassword} onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
+                  <button type="submit" disabled={loading} className="px-5 py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black disabled:opacity-50">{loading ? 'Changing...' : 'Change Password'}</button>
+                </form>
               )}
             </div>
           </div>
@@ -3425,19 +3418,87 @@ const ProfilePage = () => {
   )
 }
 
+// Public information and policy pages. Review with a Nigerian lawyer before live payments.
+const InformationPage = ({ type }) => {
+  const pages = {
+    about: {
+      icon: '🇳🇬', title: 'About Ospoly Market', intro: 'A growing multi-vendor marketplace built for campus communities and open to buyers and sellers across Nigeria.',
+      sections: [
+        ['Our purpose', 'We help local sellers present products professionally, reach customers outside their immediate community and manage enquiries, orders and delivery information in one place.'],
+        ['Who can use it', 'Students, staff, families, professionals, independent sellers and shoppers from any Nigerian state may use the marketplace, subject to account and listing rules.'],
+        ['How it works', 'Sellers create listings with images and delivery details. Admins review listings. Buyers compare products, chat with sellers and place orders for local or nationwide delivery.']
+      ]
+    },
+    terms: {
+      icon: '📄', title: 'Terms of Use', intro: 'These basic terms explain responsible use of Ospoly Market. They must be legally reviewed before full commercial launch.',
+      sections: [
+        ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
+        ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
+        ['Orders and payment', 'Until verified Paystack payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
+        ['Marketplace role', 'Ospoly Market connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
+        ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
+      ]
+    },
+    privacy: {
+      icon: '🔐', title: 'Privacy Notice', intro: 'We collect only the information needed to operate accounts, orders, support, seller tools and marketplace safety.',
+      sections: [
+        ['Information collected', 'This can include your name, email, phone number, address, account role, listings, chats, orders, reports and basic technical logs.'],
+        ['How information is used', 'Information is used to provide the service, calculate delivery, prevent abuse, respond to support requests, review sellers and improve marketplace performance.'],
+        ['Information sharing', 'Order details are shared only with the buyer, relevant seller and authorised administrators as needed. We do not publicly display private addresses or bank details.'],
+        ['Security and retention', 'Reasonable technical controls are used, but no online service is risk-free. Information is retained only as needed for operations, disputes and legal obligations.'],
+        ['Your choices', 'You may request correction or deletion of eligible personal information by contacting support@ospolymarket.com. Some transaction or dispute records may need to be retained.']
+      ]
+    },
+    returns: {
+      icon: '↩️', title: 'Returns, Refunds and Disputes', intro: 'Inspect products carefully and report a problem from My Orders as soon as possible.',
+      sections: [
+        ['Before accepting delivery', 'Check that the item, quantity and visible condition match the listing. For Pay on Delivery, do not pay until you have made a reasonable inspection.'],
+        ['Reportable problems', 'Examples include non-delivery, wrong item, counterfeit item, serious undisclosed damage or a product that materially differs from its description.'],
+        ['How to report', 'Open My Orders, select Report Issue / Request Refund and describe the problem with clear evidence. Admins can review the order and conversation.'],
+        ['Current payment limitation', 'Automatic online refunds will be added with verified Paystack payments. Until then, a report helps document and mediate the issue but is not a guarantee that the platform can reverse a direct or cash payment.'],
+        ['Excluded cases', 'Change-of-mind returns, damage after acceptance and issues clearly disclosed in the listing may depend on the seller’s stated policy.']
+      ]
+    },
+    safety: {
+      icon: '🛡️', title: 'Marketplace Safety', intro: 'Use these rules for safer local and interstate transactions.',
+      sections: [
+        ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. Ospoly Market support will not ask for them.'],
+        ['Pay safely', 'The current method is Pay on Delivery. Do not transfer to an account displayed in a screenshot, chat message or old payment page.'],
+        ['Local pickup', 'Meet in a safe public location during daylight, tell someone where you are going and inspect the product before paying.'],
+        ['Interstate delivery', 'Confirm seller identity, listing history, delivery method, tracking and return terms. Use tracked logistics where possible.'],
+        ['Report suspicious activity', 'Use the order report or support chat for impersonation, counterfeit products, payment pressure, threats or requests to move a transaction outside the platform.']
+      ]
+    }
+  }
+  const page = pages[type] || pages.about
+  return (
+    <div className="min-h-screen bg-gray-100 py-8 sm:py-12">
+      <div className="max-w-4xl mx-auto px-4">
+        <div className="bg-gradient-to-r from-gray-950 to-gray-800 text-white rounded-2xl p-6 sm:p-10 mb-6">
+          <span className="text-4xl">{page.icon}</span><h1 className="text-2xl sm:text-4xl font-black mt-3">{page.title}</h1><p className="text-gray-300 mt-3 leading-relaxed">{page.intro}</p>
+        </div>
+        <div className="space-y-4">
+          {page.sections.map(([title, body]) => <section key={title} className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6"><h2 className="font-bold text-gray-900 text-lg">{title}</h2><p className="text-sm sm:text-base text-gray-600 leading-relaxed mt-2">{body}</p></section>)}
+        </div>
+        <p className="text-xs text-gray-400 text-center mt-6">Last updated: July 2026 • Contact support@ospolymarket.com for questions.</p>
+      </div>
+    </div>
+  )
+}
+
 // Footer
 const Footer = () => {
   const navigate = useNavigate()
   return (
     <footer style={{ backgroundColor: colors.dark }} className="text-gray-300 py-8 sm:py-10">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 sm:gap-8 mb-6 sm:mb-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="bg-white rounded px-2 py-1"><span style={{ color: colors.primary }} className="font-bold text-sm">OM</span></div>
               <span className="font-bold text-white text-sm sm:text-base">Ospoly Market</span>
             </div>
-            <p className="text-xs sm:text-sm">Your trusted campus marketplace. 100% Buyer Protection.</p>
+            <p className="text-xs sm:text-sm">A growing Nigerian marketplace built for campus communities and open to shoppers nationwide.</p>
           </div>
           <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Quick Links</h4>
@@ -3456,6 +3517,16 @@ const Footer = () => {
             </ul>
           </div>
           <div>
+            <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Help & Policies</h4>
+            <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
+              <li><button onClick={() => navigate('/about')} className="hover:text-orange-400">About Us</button></li>
+              <li><button onClick={() => navigate('/safety')} className="hover:text-orange-400">Marketplace Safety</button></li>
+              <li><button onClick={() => navigate('/returns')} className="hover:text-orange-400">Returns & Disputes</button></li>
+              <li><button onClick={() => navigate('/privacy')} className="hover:text-orange-400">Privacy</button></li>
+              <li><button onClick={() => navigate('/terms')} className="hover:text-orange-400">Terms</button></li>
+            </ul>
+          </div>
+          <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Contact</h4>
             <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
               <li>📧 support@ospolymarket.com</li>
@@ -3465,7 +3536,7 @@ const Footer = () => {
           </div>
         </div>
         <div className="border-t border-gray-700 pt-6 text-center text-xs sm:text-sm">
-          <p>© {new Date().getFullYear()} Ospoly Market. All rights reserved. | 🛡️ 100% Secure Payments | 🔒 SSL Protected</p>
+          <p>© {new Date().getFullYear()} Ospoly Market. All rights reserved. | 🇳🇬 Open to buyers and sellers across Nigeria | 🔒 SSL Protected</p>
         </div>
       </div>
     </footer>
@@ -3496,6 +3567,11 @@ function App() {
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/about" element={<InformationPage type="about" />} />
+                      <Route path="/terms" element={<InformationPage type="terms" />} />
+                      <Route path="/privacy" element={<InformationPage type="privacy" />} />
+                      <Route path="/returns" element={<InformationPage type="returns" />} />
+                      <Route path="/safety" element={<InformationPage type="safety" />} />
                       <Route path="/seller" element={<SellerDashboard />} />
                       <Route path="/admin" element={<AdminDashboard />} />
                       <Route path="*" element={
