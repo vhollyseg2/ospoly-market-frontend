@@ -37,6 +37,21 @@ const colors = {
   red: '#FF0000',
 }
 
+const MARKET_CATEGORIES = [
+  { slug: 'phones-accessories', icon: '📱', name: 'Phones & Accessories', short: 'Phones', description: 'Phones, chargers, cases and accessories' },
+  { slug: 'electronics', icon: '🎧', name: 'Electronics', short: 'Electronics', description: 'Audio, TVs, computers and gadgets' },
+  { slug: 'fashion', icon: '👕', name: 'Fashion', short: 'Fashion', description: 'Clothing, shoes, bags and jewellery' },
+  { slug: 'kitchen-home', icon: '🏠', name: 'Apartment & Home', short: 'Apartment', description: 'Kitchen, appliances and room essentials' },
+  { slug: 'furniture', icon: '🪑', name: 'Furniture', short: 'Furniture', description: 'Desks, chairs, beds and storage' },
+  { slug: 'beauty-health', icon: '💄', name: 'Beauty & Health', short: 'Beauty', description: 'Skincare, haircare and personal care' },
+  { slug: 'books-education', icon: '📚', name: 'Books & Education', short: 'Books', description: 'Textbooks, stationery and learning tools' },
+  { slug: 'groceries', icon: '🛒', name: 'Groceries', short: 'Groceries', description: 'Food, drinks and everyday essentials' },
+  { slug: 'sports-fitness', icon: '⚽', name: 'Sports & Fitness', short: 'Sports', description: 'Sportswear, equipment and fitness gear' },
+  { slug: 'baby-kids', icon: '🧸', name: 'Baby & Kids', short: 'Kids', description: 'Clothing, toys and baby essentials' },
+  { slug: 'automotive', icon: '🚗', name: 'Automotive', short: 'Automotive', description: 'Vehicle accessories and spare parts' },
+  { slug: 'other', icon: '📦', name: 'Other Products', short: 'Other', description: 'More useful products from local sellers' }
+]
+
 const ScrollToTop = () => {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -725,129 +740,130 @@ const OrderTracker = ({ status }) => {
   )
 }
 
-// AI Support Chat - FIXED to send to admin/moderator only
+// AI-first support with explicit escalation to an admin or moderator
 const SupportChat = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
-    { from: 'system', text: '🤖 AI Assistant: Welcome to Ospoly Market Support! I\'m here to help 24/7. How can I assist you today?', time: new Date() }
+    { id: 'welcome', from: 'ai', text: 'Hi! I’m the Campus Market AI Assistant. I can help with orders, selling, delivery, payments and safety. If I cannot solve it, tap “Talk to a person” and I’ll send the conversation to an admin or moderator.', time: new Date() }
   ])
   const [newMessage, setNewMessage] = useState('')
+  const [typing, setTyping] = useState(false)
+  const [ticket, setTicket] = useState(null)
+  const [escalating, setEscalating] = useState(false)
   const [toast, setToast] = useState(null)
-  
-  const quickReplies = ['Track my order', 'Return/refund', 'Product inquiry', 'Seller question', 'Payment issue']
-  
-  // AI responses for common questions
-  const getAIResponse = (userMessage) => {
-    const lowerMsg = userMessage.toLowerCase()
-    
-    if (lowerMsg.includes('track') || lowerMsg.includes('order')) {
-      return 'You can track your order from the "My Orders" page in your account. Click on any order to see its current status: Pending → Confirmed → Processing → Shipped → Delivered. Is there a specific order issue I can help with? 📦'
-    }
-    if (lowerMsg.includes('refund') || lowerMsg.includes('return')) {
-      return 'To request a refund: 1) Go to "My Orders", 2) Click "Report Issue" on the order, 3) Describe the problem. Admin will review within 24 hours and process your refund within 3-5 business days. 💸'
-    }
-    if (lowerMsg.includes('payment')) {
-      return 'For now, orders use Pay on Delivery while our verified Paystack checkout is being prepared. Never transfer to a hard-coded account or share your OTP, PIN or card details. We will clearly announce when verified online payments go live. 🔒'
-    }
-    if (lowerMsg.includes('seller') || lowerMsg.includes('become')) {
-      return 'To become a seller: 1) Create an account, 2) Register as a seller, 3) Wait for admin approval (usually within 24 hours). Once approved, you can list products from your dashboard! 🚀'
-    }
-    if (lowerMsg.includes('delivery') || lowerMsg.includes('shipping')) {
-      return 'Delivery time and price depend on the seller location and your state. Each listing shows local and nationwide estimates, and the final delivery amount is calculated at checkout. 🚚'
-    }
-    if (lowerMsg.includes('scam') || lowerMsg.includes('report')) {
-      return 'If you\'ve been scammed, report immediately via "Report Issue" on your order or contact admin at admin@ospolymarket.com within 48 hours for investigation. 🛡️'
-    }
-    if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('help')) {
-      return 'Hello! I\'m your AI support assistant. I can help with: order tracking, refunds, payment issues, seller inquiries, and general questions. What can I help you with? 😊'
-    }
-    
-    return 'Thanks for your message! For specific issues, I\'ll forward this to our admin team who will respond within 1-2 hours. For urgent matters, call 09051103883 📞'
+
+  const quickReplies = ['Track my order', 'Delivery question', 'Payment safety', 'How to sell', 'Report a problem']
+
+  const getAIResponse = (message) => {
+    const text = message.toLowerCase()
+    if (text.includes('track') || text.includes('where is my order')) return 'Open My Orders from your profile menu. The tracker shows Pending → Confirmed → Processing → Shipped → Delivered. If the status has not changed for too long, I can send the order issue to a person.'
+    if (text.includes('refund') || text.includes('return') || text.includes('wrong item') || text.includes('damage')) return 'Open My Orders and choose “Report Issue / Request Refund.” Add a clear explanation and keep photos or delivery evidence. Automatic online refunds are not active during Pay on Delivery, but an admin can review and mediate the report.'
+    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'Campus Market currently uses Pay on Delivery while verified Paystack payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
+    if (text.includes('sell') || text.includes('seller') || text.includes('product')) return 'Create a seller account, choose a separate store name and wait for approval. After approval, open Seller Dashboard from your profile menu and upload 1–6 clear product images, delivery prices and an accurate description.'
+    if (text.includes('delivery') || text.includes('shipping') || text.includes('state')) return 'Each seller enters a local delivery price and a nationwide price. Your final estimate depends on the seller location and your delivery state. For interstate orders, ask for tracked delivery.'
+    if (text.includes('scam') || text.includes('fraud') || text.includes('report') || text.includes('threat')) return 'Do not pay or share private codes. Save evidence, report the order, and tap “Talk to a person” below so an admin or moderator can investigate the full conversation.'
+    if (text.includes('hello') || text.includes('hi') || text.includes('help')) return 'Hello! Choose a quick topic below or describe what happened. I’ll try to solve it first, and a human support option is always available.'
+    return 'I’m not fully certain about that specific issue. You can rephrase it with the order or product details, or tap “Talk to a person” so an admin or moderator receives this conversation.'
   }
-  
-  const handleSend = () => {
-    if (!newMessage.trim()) return
-    
-    const userMsg = newMessage
-    setMessages(prev => [...prev, { from: 'user', text: userMsg, time: new Date() }])
+
+  const addMessage = (from, text, id = `${from}-${Date.now()}-${Math.random()}`) => setMessages(current => current.some(message => message.id === id) ? current : [...current, { id, from, text, time: new Date() }])
+
+  const sendToHumanTicket = async (text) => {
+    if (!ticket?._id) return false
+    const res = await fetch(`${API_URL}/api/support/tickets/${ticket._id}/reply`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ message: text })
+    })
+    const data = await res.json()
+    return Boolean(data.success)
+  }
+
+  const handleSend = async (preset) => {
+    const text = typeof preset === 'string' ? preset : newMessage
+    if (!text.trim()) return
+    addMessage('user', text.trim())
     setNewMessage('')
-    
-    // AI responds immediately
+
+    if (ticket) {
+      try {
+        const sent = await sendToHumanTicket(text.trim())
+        if (!sent) addMessage('system', 'That message could not reach human support. Please try again.')
+      } catch { addMessage('system', 'Connection problem. Your message was not sent to human support.') }
+      return
+    }
+
+    setTyping(true)
     setTimeout(() => {
-      const aiResponse = getAIResponse(userMsg)
-      setMessages(prev => [...prev, { from: 'ai', text: aiResponse, time: new Date() }])
-    }, 800)
-    
-    // Forward to admin for serious issues
-    if (userMsg.toLowerCase().includes('scam') || userMsg.toLowerCase().includes('report') || userMsg.toLowerCase().includes('problem')) {
-      const token = localStorage.getItem('accessToken')
-      if (token) {
-        fetch(`${API_URL}/api/support/tickets`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ subject: 'User Support Request', message: userMsg, priority: 'high' })
-        }).catch(() => {})
-      }
+      setTyping(false)
+      addMessage('ai', getAIResponse(text))
+    }, 650)
+  }
+
+  const escalateToHuman = async () => {
+    if (!user) {
+      addMessage('system', 'Please sign in first so support can identify your account and reply securely.')
+      setToast({ message: 'Sign in to talk to an admin or moderator', type: 'info' })
+      return
+    }
+    setEscalating(true)
+    const transcript = messages.map(message => `${message.from.toUpperCase()}: ${message.text}`).join('\n\n')
+    try {
+      const res = await fetch(`${API_URL}/api/support/tickets`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        body: JSON.stringify({ subject: 'AI Support Escalation', message: transcript, priority: 'normal' })
+      })
+      const data = await res.json()
+      setEscalating(false)
+      if (data.success) {
+        setTicket(data.data.ticket)
+        addMessage('system', `Conversation sent to human support. Ticket #${data.data.ticket._id.slice(-6).toUpperCase()}. New messages in this chat now go to an admin or moderator.`)
+      } else addMessage('system', data.message || 'Unable to contact human support right now.')
+    } catch {
+      setEscalating(false)
+      addMessage('system', 'Unable to connect to human support. Please try again shortly.')
     }
   }
-  
+
+  useEffect(() => {
+    if (!open || !ticket || !user) return
+    const checkReplies = async () => {
+      try {
+        const data = await fetch(`${API_URL}/api/support/tickets/my`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(response => response.json())
+        const updated = data.data?.tickets?.find(item => item._id === ticket._id)
+        if (updated) {
+          setTicket(updated)
+          ;(updated.replies || []).filter(reply => reply.from?._id !== user._id && reply.from !== user._id).forEach(reply => addMessage('human', `${reply.from?.name || 'Support'}: ${reply.message}`, `reply-${reply._id}`))
+        }
+      } catch {}
+    }
+    checkReplies()
+    const interval = setInterval(checkReplies, 12000)
+    return () => clearInterval(interval)
+  }, [open, ticket?._id, user?._id])
+
   return (
-    <div className="fixed bottom-20 right-4 z-50">
-      {open && (
-        <div className="bg-white rounded-xl shadow-2xl w-80 sm:w-96 mb-2 border border-gray-200">
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-4 rounded-t-xl flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🤖</span>
-              <div>
-                <p className="font-bold">AI Support</p>
-                <p className="text-xs text-orange-100">Powered by AI + Admin Backup</p>
-              </div>
-            </div>
-            <button onClick={() => setOpen(false)} className="text-white text-xl">✕</button>
-          </div>
-          
-          <div className="h-64 overflow-y-auto p-4 space-y-3 bg-gray-50">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-lg text-sm ${
-                  msg.from === 'user' ? 'bg-orange-500 text-white' : 
-                  msg.from === 'ai' ? 'bg-white border border-gray-200 text-gray-800' : 
-                  'bg-gray-200 text-gray-600 text-center mx-auto'
-                }`}>
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="p-2 border-t bg-white rounded-b-xl">
-            <div className="flex flex-wrap gap-1 mb-2">
-              {quickReplies.map(reply => (
-                <button key={reply} onClick={() => setNewMessage(reply)}
-                  className="text-xs px-2 py-1 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-600">
-                  {reply}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input value={newMessage} onChange={e => setNewMessage(e.target.value)}
-                onKeyPress={e => e.key === 'Enter' && handleSend()}
-                placeholder="Type a message..."
-                className="flex-1 px-3 py-2 border rounded-full text-sm focus:outline-none focus:border-orange-500" />
-              <button onClick={handleSend} className="px-4 py-2 bg-orange-500 text-white rounded-full hover:bg-orange-600">
-                ➤
-              </button>
-            </div>
-          </div>
+    <div className="fixed bottom-4 right-4 z-[60]">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {open && <div className="bg-white rounded-2xl shadow-2xl w-[min(24rem,calc(100vw-2rem))] mb-3 border border-gray-200 overflow-hidden animate-slide-up">
+        <div className="bg-gradient-to-r from-gray-950 to-gray-800 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3"><span className={`w-11 h-11 rounded-full flex items-center justify-center text-2xl ${ticket ? 'bg-green-500' : 'bg-orange-500'}`}>{ticket ? '👩🏽‍💻' : '🤖'}</span><div><p className="font-bold">{ticket ? 'Human Support' : 'AI Support Assistant'}</p><p className="text-xs text-gray-300">{ticket ? `Ticket #${ticket._id.slice(-6).toUpperCase()} • ${ticket.status}` : 'Instant help • human backup available'}</p></div></div>
+          <button onClick={() => setOpen(false)} className="text-white text-xl" aria-label="Close support">✕</button>
         </div>
-      )}
-      
-      <button onClick={() => setOpen(!open)} 
-        className="w-14 h-14 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-lg flex items-center justify-center text-2xl hover:from-orange-600 hover:to-red-600 transition-all hover:scale-110">
-        {open ? '✕' : '🤖'}
-        {!open && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping" />}
-      </button>
+
+        <div className="h-72 overflow-y-auto p-4 space-y-3 bg-gray-50" aria-live="polite">
+          {messages.map(message => <div key={message.id} className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[86%] p-3 rounded-2xl text-sm shadow-sm ${message.from === 'user' ? 'bg-orange-500 text-white rounded-br-sm' : message.from === 'human' ? 'bg-green-600 text-white rounded-bl-sm' : message.from === 'system' ? 'bg-blue-50 border border-blue-200 text-blue-800 mx-auto text-xs' : 'bg-white border text-gray-800 rounded-bl-sm'}`}>{message.text}</div></div>)}
+          {typing && <div className="inline-flex gap-1 bg-white border rounded-2xl px-4 py-3"><span className="animate-pulse">●</span><span className="animate-pulse">●</span><span className="animate-pulse">●</span></div>}
+        </div>
+
+        <div className="p-3 border-t bg-white">
+          {!ticket && <div className="flex flex-wrap gap-1.5 mb-3">{quickReplies.map(reply => <button key={reply} onClick={() => handleSend(reply)} className="text-xs px-2.5 py-1.5 bg-gray-100 hover:bg-orange-50 hover:text-orange-700 rounded-full">{reply}</button>)}</div>}
+          {!ticket && <button onClick={escalateToHuman} disabled={escalating} className="w-full mb-3 py-2.5 border border-green-300 bg-green-50 text-green-800 font-bold rounded-xl text-sm hover:bg-green-100 disabled:opacity-50">{escalating ? 'Sending conversation...' : '👩🏽‍💻 Talk to a person'}</button>}
+          <div className="flex gap-2"><input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={ticket ? 'Message human support...' : 'Ask the AI assistant...'} className="min-w-0 flex-1 px-4 py-2.5 border rounded-full text-sm outline-none focus:border-orange-500" /><button onClick={() => handleSend()} className="w-11 h-11 bg-orange-500 text-white rounded-full hover:bg-orange-600" aria-label="Send message">➤</button></div>
+          <p className="text-[10px] text-gray-400 text-center mt-2">Never share passwords, OTPs, PINs or CVVs in support chat.</p>
+        </div>
+      </div>}
+      <button onClick={() => setOpen(!open)} className="relative w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105" aria-label="Open support chat">{open ? '✕' : ticket ? '👩🏽‍💻' : '🤖'}{!open && <span className="absolute -top-1 -right-1 bg-green-500 border-2 border-white w-5 h-5 rounded-full" />}</button>
     </div>
   )
 }
@@ -908,7 +924,7 @@ const ProductChat = ({ sellerId, productTitle, productId }) => {
   )
 }
 
-// Header Component
+// Header with discoverable categories and a role-aware profile dropdown
 const Header = () => {
   const { user, logout, isAuthenticated } = useAuth()
   const { summary } = useCart()
@@ -918,183 +934,109 @@ const Header = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [toast, setToast] = useState(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [showWishlist, setShowWishlist] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
 
-  const searchParams = new URLSearchParams(location.search)
-  const currentCategory = searchParams.get('category') || ''
+  const currentCategory = new URLSearchParams(location.search).get('category') || ''
+
+  useEffect(() => {
+    setProfileMenuOpen(false)
+    setCategoriesOpen(false)
+    setMobileMenuOpen(false)
+  }, [location.pathname, location.search])
 
   const handleSearch = (e) => {
     e.preventDefault()
-    if (searchQuery.trim()) navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`)
-    else navigate('/products')
+    navigate(searchQuery.trim() ? `/products?search=${encodeURIComponent(searchQuery.trim())}` : '/products')
   }
 
   const handleLogout = () => {
+    setProfileMenuOpen(false)
     logout()
     setToast({ message: 'Logged out successfully', type: 'success' })
   }
 
+  const go = path => { setProfileMenuOpen(false); navigate(path) }
+
+  const accountDropdown = profileMenuOpen && isAuthenticated && (
+    <>
+      <button aria-label="Close account menu" onClick={() => setProfileMenuOpen(false)} className="fixed inset-0 z-[70] bg-black/10" />
+      <div className="fixed z-[80] right-3 sm:right-6 top-28 sm:top-32 w-[min(22rem,calc(100vw-1.5rem))] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-fade-in">
+        <div className="p-4 bg-gradient-to-r from-orange-500 to-red-500 text-white">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-white text-orange-600 rounded-full flex items-center justify-center text-xl font-black">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</div>
+            <div className="min-w-0"><p className="font-bold truncate">{user?.name}</p><p className="text-xs text-orange-100 truncate">{user?.email}</p><span className="inline-block text-[10px] uppercase tracking-wide bg-white/20 px-2 py-0.5 rounded-full mt-1">{user?.role}</span></div>
+          </div>
+        </div>
+        <div className="p-2">
+          <button onClick={() => go('/profile')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">👤</span><span><strong className="block">My Profile</strong><span className="text-xs text-gray-500">Personal information and security</span></span></button>
+          <button onClick={() => go('/orders')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">📦</span><span><strong className="block">My Orders</strong><span className="text-xs text-gray-500">Track purchases and report issues</span></span></button>
+          <button onClick={() => go('/wishlist')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">❤️</span><span><strong className="block">Wishlist</strong><span className="text-xs text-gray-500">{wishlist.length} saved product(s)</span></span></button>
+          {(user?.role === 'seller' || user?.role === 'admin') && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-orange-50 text-left text-sm text-orange-800"><span className="text-xl">🏪</span><span><strong className="block">Seller Dashboard</strong><span className="text-xs text-orange-600">Products, images, orders and wallet</span></span></button>}
+          {(user?.role === 'admin' || user?.role === 'moderator') && <button onClick={() => go('/admin')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-purple-50 text-left text-sm text-purple-800"><span className="text-xl">🛡️</span><span><strong className="block">{user.role === 'admin' ? 'Admin Dashboard' : 'Moderator Dashboard'}</strong><span className="text-xs text-purple-600">Approvals, reports and human support</span></span></button>}
+          <div className="border-t my-2" />
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-left text-sm text-red-600"><span className="text-xl">↪</span><strong>Sign Out</strong></button>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      
-      {/* Announcement Bar */}
+      {accountDropdown}
       <AnnouncementBar />
-      
-      <header className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="hidden md:block" style={{ backgroundColor: colors.dark }}>
-          <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto">
-            <div className="flex items-center gap-4 text-white text-xs">
-              <span>📞 09051103883</span>
-              <span>🚚 Local and nationwide delivery</span>
-              <span>🛡️ Reviewed listings and support</span>
-            </div>
-            <div className="flex items-center gap-4 text-white text-xs">
-              {isAuthenticated ? (
-                <>
-                  <Link to="/orders" className="hover:text-orange-400">📦 My Orders</Link>
-                  <Link to="/profile" className="hover:text-orange-400">👤 Profile</Link>
-                  <Link to="/wishlist" className="hover:text-orange-400 flex items-center gap-1">❤️ Wishlist ({wishlist.length})</Link>
-                  <span className="text-orange-400">✋ {user?.name}</span>
-                  <button onClick={handleLogout} className="hover:text-orange-400">Sign Out</button>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" className="hover:text-orange-400">Sign In</Link>
-                  <Link to="/register" className="hover:text-orange-400">Join Free</Link>
-                </>
-              )}
-            </div>
+      <header className="bg-white shadow-sm sticky top-0 z-40 relative">
+        <div className="hidden md:block bg-gray-900 text-white">
+          <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto text-xs">
+            <div className="flex items-center gap-4"><span>📞 09051103883</span><span>🚚 Local and nationwide delivery</span><span>🛡️ Reviewed listings and support</span></div>
+            <div>{isAuthenticated ? <span>Welcome, {user?.name}</span> : <div className="flex gap-4"><Link to="/login">Sign In</Link><Link to="/register">Join Free</Link></div>}</div>
           </div>
         </div>
-        
-        <div style={{ backgroundColor: colors.primary }}>
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white text-2xl">{mobileMenuOpen ? '✕' : '☰'}</button>
-              
-              <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-                <div className="bg-white rounded-lg px-3 py-2 shadow">
-                  <img src="/logo.png" alt="Ospoly Market" className="h-8 w-8 sm:h-10 sm:w-10 object-contain"
-                    onError={(e) => e.target.style.display = 'none'} />
-                  <span style={{ color: colors.primary }} className="font-bold text-lg sm:text-xl hidden">OM</span>
-                </div>
-                <div className="hidden sm:block text-white">
-                  <span className="font-bold text-lg block leading-tight">Ospoly</span>
-                  <span className="text-xs text-orange-200">Market</span>
-                </div>
-              </Link>
-              
-              <form onSubmit={handleSearch} className="flex-1 max-w-xl sm:max-w-2xl">
-                <div className="flex">
-                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} 
-                    placeholder="Search products, stores, brands..." 
-                    className="flex-1 px-3 sm:px-4 py-2 sm:py-3 rounded-l-lg text-sm focus:outline-none w-full" />
-                  <button type="submit" className="px-4 sm:px-6 py-2 sm:py-3 bg-red-600 text-white font-bold rounded-r-lg hover:bg-red-700 transition-colors text-sm">🔍</button>
-                </div>
-              </form>
-              
-              <div className="flex items-center gap-2 sm:gap-4">
-                <Link to="/wishlist" className="hidden sm:flex items-center gap-2 text-white relative">
-                  <span className="text-xl">❤️</span>
-                  {wishlist.length > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                      {wishlist.length}
-                    </span>
-                  )}
-                </Link>
-                
-                <Link to="/cart" className="relative hidden sm:flex items-center gap-2 text-white">
-                  <div className="bg-red-600 rounded-lg px-3 py-2"><span className="text-lg">🛒</span></div>
-                  {summary.itemCount > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                      {summary.itemCount}
-                    </span>
-                  )}
-                </Link>
-                
-                {isAuthenticated ? (
-                  <div className="hidden md:flex items-center gap-3">
-                    <div className="bg-white rounded-full w-10 h-10 flex items-center justify-center text-orange-600 font-bold">
-                      {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                    </div>
-                  </div>
-                ) : (
-                  <Link to="/login" className="hidden md:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">Sign In</Link>
-                )}
+
+        <div className="bg-orange-500">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2 sm:gap-4">
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white text-2xl w-9" aria-label="Open menu">{mobileMenuOpen ? '✕' : '☰'}</button>
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0">
+              <span className="bg-white rounded-xl w-11 h-11 sm:w-12 sm:h-12 p-1.5 shadow flex items-center justify-center"><img src="/logo.svg" alt="Campus Market" className="w-full h-full object-contain" /></span>
+              <span className="hidden sm:block text-white leading-tight"><strong className="text-lg block">Campus</strong><span className="text-xs text-orange-100">Market</span></span>
+            </Link>
+
+            <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
+              <div className="flex bg-white rounded-xl overflow-hidden shadow-sm">
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search products, stores, brands..." className="min-w-0 flex-1 px-3 sm:px-4 py-3 text-sm outline-none" />
+                <button className="px-4 sm:px-6 bg-red-600 hover:bg-red-700 text-white font-bold" aria-label="Search">🔍</button>
               </div>
+            </form>
+
+            <div className="flex items-center gap-1 sm:gap-3">
+              <Link to="/wishlist" className="hidden sm:flex relative w-10 h-10 items-center justify-center text-white text-xl" aria-label="Wishlist">❤️{wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{wishlist.length}</span>}</Link>
+              <Link to="/cart" className="relative w-10 h-10 flex items-center justify-center text-white text-xl" aria-label="Cart">🛒{summary.itemCount > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{summary.itemCount}</span>}</Link>
+              {isAuthenticated ? <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} className="w-10 h-10 bg-white rounded-full text-orange-600 font-black shadow flex items-center justify-center" aria-label="Open account menu">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</button> : <Link to="/login" className="hidden sm:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">Sign In</Link>}
             </div>
           </div>
         </div>
-        
-        <div className="sm:hidden flex items-center justify-between px-4 py-2 bg-gray-50 border-t">
-          <Link to="/cart" className="flex items-center gap-2 text-gray-700">
-            <span>🛒</span><span className="text-sm">Cart</span>
-            {summary.itemCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{summary.itemCount}</span>}
-          </Link>
-          <Link to="/wishlist" className="flex items-center gap-2 text-gray-700">
-            <span>❤️</span><span className="text-sm">Wishlist</span>
-            {wishlist.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{wishlist.length}</span>}
-          </Link>
-          {isAuthenticated ? (
-            <div className="flex items-center gap-3">
-              <Link to="/profile" className="text-sm text-gray-700">👤</Link>
-              <button onClick={handleLogout} className="text-sm text-orange-600">Logout</button>
-            </div>
-          ) : (
-            <Link to="/login" className="text-sm text-orange-600 font-medium">Sign In</Link>
-          )}
-        </div>
-        
-        <div style={{ backgroundColor: colors.white, borderBottom: `1px solid ${colors.border}` }} className="overflow-x-auto">
-          <div className="px-4 flex items-center gap-1 py-2 min-w-max">
-            <Link to="/products" className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              !currentCategory ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>All</Link>
-            <button onClick={() => navigate('/products?category=phones-accessories')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'phones-accessories' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>📱 Phones</button>
-            <button onClick={() => navigate('/products?category=electronics')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'electronics' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>🎧 Electronics</button>
-            <button onClick={() => navigate('/products?category=furniture')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'furniture' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>🪑 Furniture</button>
-            <button onClick={() => navigate('/products?category=fashion')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'fashion' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>👕 Fashion</button>
-            <button onClick={() => navigate('/products?category=kitchen-home')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'kitchen-home' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>🏠 Home</button>
-            <button onClick={() => navigate('/products?category=beauty-health')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'beauty-health' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>💄 Beauty</button>
-            <button onClick={() => navigate('/products?category=books-education')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'books-education' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>📚 Books</button>
-            <button onClick={() => navigate('/products?category=groceries')} className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${
-              currentCategory === 'groceries' ? 'text-orange-600 border-orange-600' : 'text-gray-700 border-transparent hover:text-orange-600'
-            }`}>🛒 Groceries</button>
-            <button onClick={() => navigate('/products?flash=true')} className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap text-red-600 hover:bg-red-50 rounded">
-              ⚡ Flash Deals
-            </button>
-            {(user?.role === 'seller' || user?.role === 'admin') && (
-              <Link to="/seller" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-orange-600 whitespace-nowrap">🏪 Seller</Link>
-            )}
-            {(user?.role === 'admin' || user?.role === 'moderator') && (
-              <Link to="/admin" className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-purple-600 whitespace-nowrap">⚙️ Moderation</Link>
-            )}
+
+        <nav className="border-b border-gray-200 bg-white">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center gap-1 overflow-x-auto min-w-0">
+            <button onClick={() => setCategoriesOpen(!categoriesOpen)} className={`px-3 sm:px-4 py-3 text-xs sm:text-sm font-bold whitespace-nowrap ${categoriesOpen ? 'bg-orange-50 text-orange-700' : 'text-gray-800 hover:text-orange-600'}`}>☰ All Categories</button>
+            <Link to="/products" className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${!currentCategory ? 'text-orange-600 border-orange-600' : 'text-gray-600 border-transparent'}`}>All Products</Link>
+            {MARKET_CATEGORIES.slice(0, 6).map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === category.slug ? 'text-orange-600 border-orange-600' : 'text-gray-600 border-transparent hover:text-orange-600'}`}>{category.icon} {category.short}</button>)}
+            <button onClick={() => navigate('/products?flash=true')} className="px-3 py-3 text-xs sm:text-sm font-bold whitespace-nowrap text-red-600">⚡ Deals</button>
           </div>
-        </div>
-        
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t p-4 space-y-2">
-            <Link to="/" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">🏠 Home</Link>
-            <Link to="/products" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">📦 All Products</Link>
-            <Link to="/wishlist" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">❤️ Wishlist</Link>
-            {isAuthenticated && <><Link to="/orders" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">📦 Orders</Link><Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-700">👤 Profile</Link></>}
+        </nav>
+
+        {categoriesOpen && <div className="absolute left-0 right-0 top-full bg-white border-t shadow-2xl z-50">
+          <div className="max-w-7xl mx-auto p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4"><div><h2 className="font-black text-gray-900">Explore all categories</h2><p className="text-xs text-gray-500">Find products even when you are not sure what to search for</p></div><button onClick={() => setCategoriesOpen(false)} className="text-gray-500 text-xl">✕</button></div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">{MARKET_CATEGORIES.map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="p-3 sm:p-4 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-50 text-left flex gap-3"><span className="text-2xl">{category.icon}</span><span><strong className="text-sm block text-gray-900">{category.name}</strong><span className="text-[11px] text-gray-500 line-clamp-2">{category.description}</span></span></button>)}</div>
           </div>
-        )}
+        </div>}
+
+        {mobileMenuOpen && <div className="md:hidden bg-white border-t p-4 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2 mb-3">{MARKET_CATEGORIES.map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="p-3 bg-gray-50 rounded-lg text-left text-xs">{category.icon} {category.name}</button>)}</div>
+          <div className="border-t pt-3 flex gap-3 text-sm"><Link to="/about">About</Link><Link to="/safety">Safety</Link><Link to="/returns">Returns</Link></div>
+        </div>}
       </header>
     </>
   )
@@ -1317,7 +1259,7 @@ const HomePage = () => {
       <section
         className="hero-photo relative overflow-hidden min-h-[520px] sm:min-h-[580px] flex items-center"
         style={{ backgroundImage: "url('/hero-marketplace.jpg')" }}
-        aria-label="Ospoly Market nationwide shopping marketplace"
+        aria-label="Campus Market nationwide shopping marketplace"
       >
         <div className="absolute inset-0 bg-gradient-to-r from-[#0b1026]/95 via-[#111827]/80 to-[#111827]/10" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
@@ -1364,11 +1306,30 @@ const HomePage = () => {
             <div className="flex flex-wrap items-center gap-2 mt-7 text-xs">
               <span className="text-gray-300">Popular:</span>
               {[
-                ['Phones', 'phones-accessories'], ['Fashion', 'fashion'], ['Electronics', 'electronics'], ['Home', 'kitchen-home']
+                ['Phones', 'phones-accessories'], ['Fashion', 'fashion'], ['Electronics', 'electronics'], ['Apartment', 'kitchen-home']
               ].map(([label, category]) => (
                 <button key={category} onClick={() => navigate(`/products?category=${category}`)} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10">{label}</button>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Highly visible category discovery for shoppers who do not know what to search for */}
+      <section className="py-8 sm:py-12 bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-end justify-between gap-4 mb-6">
+            <div><span className="text-xs font-bold uppercase tracking-widest text-orange-600">Browse your way</span><h2 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">Explore all categories</h2><p className="text-sm text-gray-500 mt-1">Not sure what to search for? Start with a category.</p></div>
+            <button onClick={() => navigate('/products')} className="hidden sm:block text-sm font-bold text-orange-600">View every product →</button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {MARKET_CATEGORIES.map(category => (
+              <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="group rounded-2xl border border-gray-200 bg-gray-50 hover:bg-orange-50 hover:border-orange-300 p-4 text-left min-h-32 transition-all">
+                <span className="w-11 h-11 bg-white rounded-xl shadow-sm flex items-center justify-center text-2xl group-hover:scale-110">{category.icon}</span>
+                <strong className="block text-sm text-gray-900 mt-3">{category.name}</strong>
+                <span className="text-[11px] text-gray-500 line-clamp-2 mt-1">{category.description}</span>
+              </button>
+            ))}
           </div>
         </div>
       </section>
@@ -1386,9 +1347,7 @@ const HomePage = () => {
             <div className="max-w-7xl mx-auto px-4">
               <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <h2 className="text-lg sm:text-xl font-bold text-gray-800 capitalize">
-                  {category === 'phones-accessories' ? '📱 Phones & Accessories' : 
-                   category === 'kitchen-home' ? '🏠 Apartment & Home' : 
-                   `🎧 ${category.charAt(0).toUpperCase() + category.slice(1).replace('-', ' ')}`}
+                  {`${MARKET_CATEGORIES.find(item => item.slug === category)?.icon || '📦'} ${MARKET_CATEGORIES.find(item => item.slug === category)?.name || category.replace('-', ' ')}`}
                 </h2>
                 <button onClick={() => navigate(`/products?category=${category}`)} className="text-orange-600 font-medium hover:underline text-sm">
                   View All →
@@ -1419,11 +1378,21 @@ const HomePage = () => {
         </div>
       </div>
 
+      {/* Clear onboarding for first-time shoppers and sellers */}
+      <section className="py-10 sm:py-14 bg-gray-950 text-white">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div><span className="text-orange-400 text-xs font-bold uppercase tracking-widest">Simple and transparent</span><h2 className="text-2xl sm:text-4xl font-black mt-2">From discovery to delivery</h2><p className="text-gray-300 mt-3 max-w-xl">Campus Market helps buyers find useful products and helps independent sellers present their stores professionally to customers in every state.</p><div className="flex flex-wrap gap-3 mt-6"><button onClick={() => navigate('/products')} className="px-5 py-3 bg-orange-500 font-bold rounded-xl">Start shopping</button><button onClick={() => navigate(isAuthenticated ? '/profile' : '/register')} className="px-5 py-3 border border-white/30 font-bold rounded-xl">Become a seller</button></div></div>
+            <div className="grid sm:grid-cols-3 gap-3">{[['1', 'Browse', 'Search or explore clear categories and seller locations.'], ['2', 'Compare', 'Check images, condition, delivery price and chat with the seller.'], ['3', 'Receive', 'Track the order and inspect Pay-on-Delivery items before paying.']].map(([number, title, body]) => <div key={number} className="bg-white/5 border border-white/10 p-5 rounded-2xl"><span className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center font-black">{number}</span><h3 className="font-bold mt-4">{title}</h3><p className="text-xs text-gray-400 mt-2 leading-relaxed">{body}</p></div>)}</div>
+          </div>
+        </div>
+      </section>
+
       {/* Trust Section */}
-      <div className="py-6 sm:py-8 bg-white">
+      <div className="py-8 sm:py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">
-            🛡️ Why Choose Ospoly Market
+            🛡️ Why Choose Campus Market
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
             {[
@@ -1494,9 +1463,10 @@ const ProductsPage = () => {
     if (search) return `Search: "${search}"`
     if (seller) return products[0]?.seller?.sellerProfile?.storeName ? `Store: ${products[0].seller.sellerProfile.storeName}` : 'Seller Store'
     if (flash) return '⚡ Flash Deals'
-    if (category === 'phones-accessories') return '📱 Phones & Accessories'
-    if (category === 'kitchen-home') return '🏠 Apartment & Home'
-    if (category) return category.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())
+    if (category) {
+      const meta = MARKET_CATEGORIES.find(item => item.slug === category)
+      return meta ? `${meta.icon} ${meta.name}` : category.replaceAll('-', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+    }
     return 'All Products'
   }
 
@@ -2302,7 +2272,7 @@ const LoginPage = () => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
         <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
           <div className="bg-white rounded-lg w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <span style={{ color: colors.primary }} className="text-2xl font-bold">OM</span>
+            <span style={{ color: colors.primary }} className="text-2xl font-bold">CM</span>
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
           <p className="text-orange-100 text-sm mt-1">Sign in to your account</p>
@@ -2329,7 +2299,7 @@ const LoginPage = () => {
           
           <div className="flex items-center justify-between mt-4 text-sm">
             <Link to="/register" className="text-orange-600 font-bold hover:underline">Create Account</Link>
-            <a href="mailto:support@ospolymarket.com" className="text-gray-500 hover:text-orange-600">Need login help?</a>
+            <span className="text-gray-500">Use the Support button for login help</span>
           </div>
           
           <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
@@ -2368,7 +2338,7 @@ const RegisterPage = () => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
         <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
           <h1 className="text-2xl font-bold text-white">Create Account</h1>
-          <p className="text-orange-100 text-sm mt-1">Join Ospoly Market - It's Free!</p>
+          <p className="text-orange-100 text-sm mt-1">Join Campus Market - It's Free!</p>
         </div>
         
         <div className="p-6 pb-0">
@@ -2782,7 +2752,7 @@ const SellerDashboard = () => {
                         <option value="phones-accessories">📱 Phones & Accessories</option>
                         <option value="electronics">🎧 Electronics</option>
                         <option value="fashion">👕 Fashion</option>
-                        <option value="kitchen-home">🏠 Home & Kitchen</option>
+                        <option value="kitchen-home">🏠 Apartment & Home</option>
                         <option value="furniture">🪑 Furniture</option>
                         <option value="beauty-health">💄 Beauty & Health</option>
                         <option value="books-education">📚 Books & Education</option>
@@ -2986,6 +2956,10 @@ const AdminDashboard = () => {
   const [reports, setReports] = useState([])
   const [supportTickets, setSupportTickets] = useState([])
   const [adminChats, setAdminChats] = useState([])
+  const [moderators, setModerators] = useState([])
+  const [adminError, setAdminError] = useState('')
+  const [backendVersion, setBackendVersion] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -2996,28 +2970,31 @@ const AdminDashboard = () => {
     
     const fetchData = async () => {
       try {
-        const [statsRes, productsRes, sellersRes, reportsRes, allProductsRes, ticketsRes, chatsRes] = await Promise.all([
-          fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
-          fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { products: [] } })),
-          fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { sellers: [] } })),
-          fetch(`${API_URL}/api/admin/reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: true, data: { reports: [] } })),
-          fetch(`${API_URL}/api/products?isApproved=false&limit=50`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+        setLoading(true)
+        setAdminError('')
+        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes] = await Promise.all([
+          fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+          fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-products route is unavailable' })),
+          fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-sellers route is unavailable' })),
+          fetch(`${API_URL}/api/admin/reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/admin/support-tickets`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
-          fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false }))
+          fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+          fetch(`${API_URL}/api/health?check=${Date.now()}`).then(r => r.json()).catch(() => ({ success: false })),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/moderators`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { moderators: [] } })
         ])
         
         if (statsRes.success) setStats(statsRes.data)
         
-        // Get pending products from dedicated endpoint or fallback to filtered products
-        const products = productsRes.success ? (productsRes.data.products || []) : []
-        const allPending = allProductsRes.success ? (allProductsRes.data.products || []).filter(p => !p.isApproved) : []
-        setPendingProducts(products.length > 0 ? products : allPending)
-        
+        setBackendVersion(healthRes.version || 'unknown')
+        if (productsRes.success) setPendingProducts(productsRes.data.products || [])
         if (sellersRes.success) setPendingSellers(sellersRes.data.sellers || [])
         if (reportsRes.success) setReports(reportsRes.data.reports || [])
         if (ticketsRes.success) setSupportTickets(ticketsRes.data.tickets || [])
         if (chatsRes.success) setAdminChats(chatsRes.data.chats || [])
-        
+        if (moderatorsRes.success) setModerators(moderatorsRes.data.moderators || [])
+        if (!productsRes.success || !sellersRes.success || healthRes.version !== '6.0.0') {
+          setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
+        }
         setLoading(false)
       } catch (error) {
         console.error('Error fetching admin data:', error)
@@ -3026,7 +3003,7 @@ const AdminDashboard = () => {
     }
     
     fetchData()
-  }, [user, navigate])
+  }, [user, navigate, refreshKey])
 
   const handleApproveProduct = async (productId) => {
     try {
@@ -3075,6 +3052,54 @@ const AdminDashboard = () => {
     } catch { setToast({ message: 'Failed to process refund', type: 'error' }) }
   }
 
+  const handleSupportReply = async (ticket) => {
+    const message = window.prompt(`Reply to ${ticket.user?.name || 'this user'}:`)
+    if (!message?.trim()) return
+    try {
+      const res = await fetch(`${API_URL}/api/admin/support-tickets/${ticket._id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ message: message.trim() })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSupportTickets(current => current.map(item => item._id === ticket._id ? data.data.ticket : item))
+        setToast({ message: '✓ Reply sent to the user', type: 'success' })
+      } else setToast({ message: data.message || 'Unable to send reply', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to support service', type: 'error' }) }
+  }
+
+  const handleTicketStatus = async (ticket, status) => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/support-tickets/${ticket._id}/status`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ status })
+      })
+      const data = await res.json()
+      if (data.success) setSupportTickets(current => current.map(item => item._id === ticket._id ? { ...item, status } : item))
+    } catch { setToast({ message: 'Unable to update ticket', type: 'error' }) }
+  }
+
+  const createModerator = async () => {
+    const name = window.prompt('Moderator full name:')
+    if (!name) return
+    const email = window.prompt('Moderator email address:')
+    if (!email) return
+    const password = window.prompt('Temporary password (at least 10 characters):')
+    if (!password) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/moderators`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ name, email, password }) }).then(response => response.json())
+      if (data.success) { setModerators(current => [data.data.moderator, ...current]); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to create moderator', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
+  }
+
+  const removeModerator = async (moderator) => {
+    if (!window.confirm(`Remove moderator access for ${moderator.name}?`)) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/moderators/${moderator._id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(response => response.json())
+      if (data.success) setModerators(current => current.filter(item => item._id !== moderator._id))
+      else setToast({ message: data.message || 'Unable to remove moderator', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
+  }
+
   if (!user || !['admin', 'moderator'].includes(user.role)) return null
 
   return (
@@ -3082,7 +3107,8 @@ const AdminDashboard = () => {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">⚙️ Admin Dashboard</h1>
+          <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6"><h1 className="text-xl sm:text-2xl font-bold text-gray-800">⚙️ {user.role === 'moderator' ? 'Moderator' : 'Admin'} Dashboard</h1><div className="flex items-center gap-2"><button onClick={() => setRefreshKey(key => key + 1)} disabled={loading} className="text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50">↻ Refresh</button><span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Backend v{backendVersion || 'checking'}</span></div></div>
+          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=6`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
@@ -3114,6 +3140,7 @@ const AdminDashboard = () => {
               <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
               <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🚨 Refund Reports ({reports.length})</button>
               <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💬 Support Chats</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
             
             <div className="p-4 sm:p-6">
@@ -3208,6 +3235,13 @@ const AdminDashboard = () => {
                 </div>
               )}
 
+              {activeTab === 'team' && user.role === 'admin' && (
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">Moderator accounts</h3><p className="text-xs text-gray-500">Moderators can review listings, reports and human-support tickets but cannot create other moderators or approve refunds.</p></div><button onClick={createModerator} className="px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg">+ Add Moderator</button></div>
+                  {moderators.length ? <div className="space-y-3">{moderators.map(moderator => <div key={moderator._id} className="border rounded-xl p-4 flex items-center justify-between gap-3"><div><p className="font-bold text-sm">{moderator.name}</p><p className="text-xs text-gray-500">{moderator.email}</p><p className="text-[10px] text-gray-400 mt-1">Added {new Date(moderator.createdAt).toLocaleDateString()}</p></div><button onClick={() => removeModerator(moderator)} className="px-3 py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg">Remove access</button></div>)}</div> : <p className="text-center py-10 text-gray-500 text-sm">No moderator accounts yet</p>}
+                </div>
+              )}
+
               {activeTab === 'chats' && (
                 <div className="space-y-8">
                   <section>
@@ -3215,9 +3249,10 @@ const AdminDashboard = () => {
                     {supportTickets.length ? <div className="space-y-3">
                       {supportTickets.map(ticket => (
                         <div key={ticket._id} className="border rounded-xl p-4">
-                          <div className="flex justify-between gap-3 flex-wrap"><div><p className="font-bold text-sm">{ticket.subject}</p><p className="text-xs text-gray-500">{ticket.user?.name} • {ticket.user?.email}</p></div><span className={`text-xs px-2 py-1 h-fit rounded-full ${ticket.priority === 'high' || ticket.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{ticket.status} / {ticket.priority}</span></div>
-                          <p className="text-sm text-gray-700 mt-3 whitespace-pre-line">{ticket.message}</p>
-                          <p className="text-xs text-gray-400 mt-2">{new Date(ticket.createdAt).toLocaleString()}</p>
+                          <div className="flex justify-between gap-3 flex-wrap"><div><p className="font-bold text-sm">{ticket.subject}</p><p className="text-xs text-gray-500">{ticket.user?.name} • {ticket.user?.email} • #{ticket._id.slice(-6).toUpperCase()}</p></div><span className={`text-xs px-2 py-1 h-fit rounded-full ${ticket.priority === 'high' || ticket.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{ticket.status} / {ticket.priority}</span></div>
+                          <p className="text-sm text-gray-700 mt-3 whitespace-pre-line bg-gray-50 p-3 rounded-lg max-h-36 overflow-y-auto">{ticket.message}</p>
+                          {ticket.replies?.length > 0 && <div className="mt-3 space-y-2">{ticket.replies.slice(-4).map(reply => <div key={reply._id} className={`text-xs p-2 rounded-lg ${reply.from?.role === 'admin' || reply.from?.role === 'moderator' ? 'bg-green-50 text-green-800 ml-5' : 'bg-orange-50 text-orange-800 mr-5'}`}><strong>{reply.from?.name || 'User'}:</strong> {reply.message}</div>)}</div>}
+                          <div className="flex items-center justify-between gap-2 mt-3 flex-wrap"><p className="text-xs text-gray-400">{new Date(ticket.updatedAt || ticket.createdAt).toLocaleString()}</p><div className="flex gap-2"><button onClick={() => handleSupportReply(ticket)} disabled={ticket.status === 'closed'} className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg disabled:opacity-40">Reply</button>{ticket.status !== 'resolved' && <button onClick={() => handleTicketStatus(ticket, 'resolved')} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg">Resolve</button>}{ticket.status !== 'closed' && <button onClick={() => handleTicketStatus(ticket, 'closed')} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg">Close</button>}</div></div>
                         </div>
                       ))}
                     </div> : <p className="text-center py-6 text-gray-500 text-sm">No support tickets</p>}
@@ -3422,7 +3457,7 @@ const ProfilePage = () => {
 const InformationPage = ({ type }) => {
   const pages = {
     about: {
-      icon: '🇳🇬', title: 'About Ospoly Market', intro: 'A growing multi-vendor marketplace built for campus communities and open to buyers and sellers across Nigeria.',
+      icon: '🇳🇬', title: 'About Campus Market', intro: 'A growing multi-vendor marketplace built for campus communities and open to buyers and sellers across Nigeria.',
       sections: [
         ['Our purpose', 'We help local sellers present products professionally, reach customers outside their immediate community and manage enquiries, orders and delivery information in one place.'],
         ['Who can use it', 'Students, staff, families, professionals, independent sellers and shoppers from any Nigerian state may use the marketplace, subject to account and listing rules.'],
@@ -3430,12 +3465,12 @@ const InformationPage = ({ type }) => {
       ]
     },
     terms: {
-      icon: '📄', title: 'Terms of Use', intro: 'These basic terms explain responsible use of Ospoly Market. They must be legally reviewed before full commercial launch.',
+      icon: '📄', title: 'Terms of Use', intro: 'These basic terms explain responsible use of Campus Market. They must be legally reviewed before full commercial launch.',
       sections: [
         ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
         ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
         ['Orders and payment', 'Until verified Paystack payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
-        ['Marketplace role', 'Ospoly Market connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
+        ['Marketplace role', 'Campus Market connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
         ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
       ]
     },
@@ -3446,7 +3481,7 @@ const InformationPage = ({ type }) => {
         ['How information is used', 'Information is used to provide the service, calculate delivery, prevent abuse, respond to support requests, review sellers and improve marketplace performance.'],
         ['Information sharing', 'Order details are shared only with the buyer, relevant seller and authorised administrators as needed. We do not publicly display private addresses or bank details.'],
         ['Security and retention', 'Reasonable technical controls are used, but no online service is risk-free. Information is retained only as needed for operations, disputes and legal obligations.'],
-        ['Your choices', 'You may request correction or deletion of eligible personal information by contacting support@ospolymarket.com. Some transaction or dispute records may need to be retained.']
+        ['Your choices', 'You may request correction or deletion of eligible personal information through the in-app Support chat. Some transaction or dispute records may need to be retained.']
       ]
     },
     returns: {
@@ -3462,7 +3497,7 @@ const InformationPage = ({ type }) => {
     safety: {
       icon: '🛡️', title: 'Marketplace Safety', intro: 'Use these rules for safer local and interstate transactions.',
       sections: [
-        ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. Ospoly Market support will not ask for them.'],
+        ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. Campus Market support will not ask for them.'],
         ['Pay safely', 'The current method is Pay on Delivery. Do not transfer to an account displayed in a screenshot, chat message or old payment page.'],
         ['Local pickup', 'Meet in a safe public location during daylight, tell someone where you are going and inspect the product before paying.'],
         ['Interstate delivery', 'Confirm seller identity, listing history, delivery method, tracking and return terms. Use tracked logistics where possible.'],
@@ -3480,7 +3515,7 @@ const InformationPage = ({ type }) => {
         <div className="space-y-4">
           {page.sections.map(([title, body]) => <section key={title} className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6"><h2 className="font-bold text-gray-900 text-lg">{title}</h2><p className="text-sm sm:text-base text-gray-600 leading-relaxed mt-2">{body}</p></section>)}
         </div>
-        <p className="text-xs text-gray-400 text-center mt-6">Last updated: July 2026 • Contact support@ospolymarket.com for questions.</p>
+        <p className="text-xs text-gray-400 text-center mt-6">Last updated: July 2026 • Use the in-app Support chat for questions.</p>
       </div>
     </div>
   )
@@ -3495,8 +3530,8 @@ const Footer = () => {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 sm:gap-8 mb-6 sm:mb-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="bg-white rounded px-2 py-1"><span style={{ color: colors.primary }} className="font-bold text-sm">OM</span></div>
-              <span className="font-bold text-white text-sm sm:text-base">Ospoly Market</span>
+              <div className="bg-white rounded px-2 py-1"><span style={{ color: colors.primary }} className="font-bold text-sm">CM</span></div>
+              <span className="font-bold text-white text-sm sm:text-base">Campus Market</span>
             </div>
             <p className="text-xs sm:text-sm">A growing Nigerian marketplace built for campus communities and open to shoppers nationwide.</p>
           </div>
@@ -3529,14 +3564,14 @@ const Footer = () => {
           <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Contact</h4>
             <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
-              <li>📧 support@ospolymarket.com</li>
+              <li>🤖 AI help with human escalation</li>
               <li>📱 09051103883</li>
               <li>💬 Live Chat Available</li>
             </ul>
           </div>
         </div>
         <div className="border-t border-gray-700 pt-6 text-center text-xs sm:text-sm">
-          <p>© {new Date().getFullYear()} Ospoly Market. All rights reserved. | 🇳🇬 Open to buyers and sellers across Nigeria | 🔒 SSL Protected</p>
+          <p>© {new Date().getFullYear()} Campus Market. All rights reserved. | 🇳🇬 Open to buyers and sellers across Nigeria | 🔒 SSL Protected</p>
         </div>
       </div>
     </footer>

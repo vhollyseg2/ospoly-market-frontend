@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Campus Market</title>
+  <desc id="desc">Orange shopping bag and graduation cap logo</desc>
+  <defs>
+    <linearGradient id="g" x1="80" y1="80" x2="430" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF8A00"/>
+      <stop offset="1" stop-color="#F0440A"/>
+    </linearGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#9A3412" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="120" fill="#FFF7ED"/>
+  <g filter="url(#s)">
+    <path d="M134 190h244l-23 205a30 30 0 0 1-30 27H187a30 30 0 0 1-30-27l-23-205Z" fill="url(#g)"/>
+    <path d="M194 205v-30c0-47 27-83 62-83s62 36 62 83v30" fill="none" stroke="#F97316" stroke-width="28" stroke-linecap="round"/>
+    <path d="m256 119 112 45-112 45-112-45 112-45Z" fill="#1F2937"/>
+    <path d="M326 183v62" stroke="#1F2937" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="326" cy="258" r="13" fill="#1F2937"/>
+    <path d="M203 286c21-19 42-28 63-28 23 0 43 9 60 26" fill="none" stroke="#fff" stroke-width="25" stroke-linecap="round"/>
+    <path d="m220 340 27 27 55-62" fill="none" stroke="#fff" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
