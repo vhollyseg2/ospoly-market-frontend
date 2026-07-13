@@ -1315,25 +1315,6 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* Highly visible category discovery for shoppers who do not know what to search for */}
-      <section className="py-8 sm:py-12 bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-end justify-between gap-4 mb-6">
-            <div><span className="text-xs font-bold uppercase tracking-widest text-orange-600">Browse your way</span><h2 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">Explore all categories</h2><p className="text-sm text-gray-500 mt-1">Not sure what to search for? Start with a category.</p></div>
-            <button onClick={() => navigate('/products')} className="hidden sm:block text-sm font-bold text-orange-600">View every product →</button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {MARKET_CATEGORIES.map(category => (
-              <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="group rounded-2xl border border-gray-200 bg-gray-50 hover:bg-orange-50 hover:border-orange-300 p-4 text-left min-h-32 transition-all">
-                <span className="w-11 h-11 bg-white rounded-xl shadow-sm flex items-center justify-center text-2xl group-hover:scale-110">{category.icon}</span>
-                <strong className="block text-sm text-gray-900 mt-3">{category.name}</strong>
-                <span className="text-[11px] text-gray-500 line-clamp-2 mt-1">{category.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Flash Deals */}
       {flashDeals.length > 0 && <FlashDealsSection products={flashDeals} />}
 
