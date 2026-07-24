@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /seller
+Disallow: /checkout
+Disallow: /profile
+Disallow: /messages
+Disallow: /payment/
+
+Sitemap: https://ospoly-market-frontend.vercel.app/sitemap.xml

@@ -5,7 +5,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://ospoly-market-api.onren
 
 const getProductImage = (product, index = 0) => {
   const image = product?.images?.[index]
-  return typeof image === 'string' ? image : image?.url || ''
+  const url = typeof image === 'string' ? image : image?.url || ''
+  if (url.startsWith('/')) return `${API_URL}${url}`
+  return url
 }
 
 const ProductImage = ({ product, index = 0, alt, className = '', fallbackClassName = '' }) => {
@@ -22,6 +24,17 @@ const ProductImage = ({ product, index = 0, alt, className = '', fallbackClassNa
     )
   }
   return <img src={src} alt={alt || product?.title || 'Product'} className={`product-image ${className}`} loading="lazy" onError={() => setFailed(true)} />
+}
+
+const VerificationBadge = ({ level = 'identity_verified' }) => {
+  const levels = {
+    unverified: { label: 'Unverified', icon: '○', className: 'bg-gray-100 text-gray-600' },
+    identity_verified: { label: 'Identity Verified', icon: '✓', className: 'bg-blue-100 text-blue-700' },
+    bank_verified: { label: 'Bank Verified', icon: '✓', className: 'bg-purple-100 text-purple-700' },
+    trusted: { label: 'Trusted Seller', icon: '★', className: 'bg-green-100 text-green-700' }
+  }
+  const item = levels[level] || levels.unverified
+  return <span title="Verification reflects completed Campus Market checks, not a guarantee of every transaction." className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${item.className}`}>{item.icon} {item.label}</span>
 }
 
 const colors = {
@@ -201,28 +214,39 @@ const RecentlyViewedProvider = ({ children }) => {
 // Notification Provider
 const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([])
-  
-  const addNotification = (notification) => {
-    const newNotif = { ...notification, id: Date.now(), read: false, createdAt: new Date() }
-    setNotifications(prev => [newNotif, ...prev])
+  const { user } = useContext(AuthContext)
+
+  const fetchNotifications = async () => {
+    if (!user) { setNotifications([]); return }
+    try {
+      const data = await fetch(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
+      if (data.success) setNotifications(data.data.notifications || [])
+    } catch {}
   }
-  
-  const markAsRead = (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+
+  useEffect(() => {
+    fetchNotifications()
+    if (!user) return
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [user?._id])
+
+  const addNotification = notification => setNotifications(previous => [{ ...notification, _id: `local-${Date.now()}`, read: false, createdAt: new Date() }, ...previous])
+  const markAsRead = async id => {
+    setNotifications(previous => previous.map(item => String(item._id || item.id) === String(id) ? { ...item, read: true } : item))
+    if (!String(id).startsWith('local-')) fetch(`${API_URL}/api/notifications/${id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).catch(() => {})
   }
-  
-  const clearAll = () => setNotifications([])
-  
-  return (
-    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, clearAll }}>
-      {children}
-    </NotificationContext.Provider>
-  )
+  const clearAll = async () => {
+    setNotifications(previous => previous.map(item => ({ ...item, read: true })))
+    fetch(`${API_URL}/api/notifications/read-all`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).catch(() => {})
+  }
+
+  return <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, clearAll, fetchNotifications }}>{children}</NotificationContext.Provider>
 }
 
 // Chat Provider for Buyer-Seller-Admin communication
 const ChatProvider = ({ children }) => {
-  const [chats, setChats] = useState({})
+  const [chats, setChats] = useState([])
   const [activeChat, setActiveChat] = useState(null)
   const { user } = useContext(AuthContext)
   
@@ -232,7 +256,7 @@ const ChatProvider = ({ children }) => {
     try {
       const res = await fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (data.success) setChats(data.data.chats || {})
+      if (data.success) setChats(data.data.chats || [])
     } catch {}
   }
   
@@ -405,7 +429,8 @@ const AnnouncementBar = () => {
 
 // Notification Bell
 const NotificationBell = () => {
-  const { notifications, markAsRead } = useNotifications()
+  const { notifications, markAsRead, clearAll } = useNotifications()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const unreadCount = notifications.filter(n => !n.read).length
   
@@ -424,7 +449,7 @@ const NotificationBell = () => {
         <div className="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
           <div className="p-4 border-b flex items-center justify-between">
             <h3 className="font-bold text-gray-800">Notifications</h3>
-            <button onClick={() => setOpen(false)} className="text-gray-500">✕</button>
+            <div className="flex gap-2"><button onClick={clearAll} className="text-xs text-orange-600">Mark all read</button><button onClick={() => setOpen(false)} className="text-gray-500">✕</button></div>
           </div>
           {notifications.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -434,7 +459,8 @@ const NotificationBell = () => {
           ) : (
             <div className="divide-y">
               {notifications.slice(0, 10).map(n => (
-                <div key={n.id} className={`p-4 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-orange-50' : ''}`} onClick={() => markAsRead(n.id)}>
+                <div key={n._id || n.id} className={`p-4 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-orange-50' : ''}`} onClick={() => { markAsRead(n._id || n.id); if (n.link) { setOpen(false); navigate(n.link) } }}>
+                  {n.title && <p className="text-xs font-bold text-orange-600 mb-1">{n.title}</p>}
                   <p className="text-sm font-medium text-gray-800">{n.message}</p>
                   <p className="text-xs text-gray-500 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
                 </div>
@@ -662,7 +688,7 @@ const WishlistButton = ({ product, className = '' }) => {
 }
 
 // Safe interim checkout confirmation.
-// Online card/transfer payments remain disabled until a verified Paystack account is connected.
+// Online card/transfer payments remain disabled until verified Flutterwave live payments are approved and enabled.
 const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess }) => {
   if (!isOpen) return null
   const sellerNames = [...new Set((orderItems || []).map(item => item?.sellerName || item?.seller?.sellerProfile?.storeName || item?.seller?.name).filter(Boolean))]
@@ -677,7 +703,7 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess 
         <div className="my-5 rounded-xl bg-orange-50 border border-orange-200 p-4">
           <p className="text-sm font-bold text-orange-900">Temporary payment method: Pay on Delivery</p>
           <p className="text-xs text-orange-800 mt-2 leading-relaxed">
-            Online card, USSD and bank-transfer payments are not active yet. Do not transfer money to any account shown outside a verified Paystack checkout. Confirm the item and seller before paying on delivery.
+            Online card, USSD and bank-transfer payments are not active yet. Do not transfer money to any account shown outside the official Flutterwave checkout. Confirm the item and seller before paying on delivery.
           </p>
         </div>
 
@@ -760,7 +786,7 @@ const SupportChat = () => {
     const text = message.toLowerCase()
     if (text.includes('track') || text.includes('where is my order')) return 'Open My Orders from your profile menu. The tracker shows Pending → Confirmed → Processing → Shipped → Delivered. If the status has not changed for too long, I can send the order issue to a person.'
     if (text.includes('refund') || text.includes('return') || text.includes('wrong item') || text.includes('damage')) return 'Open My Orders and choose “Report Issue / Request Refund.” Add a clear explanation and keep photos or delivery evidence. Automatic online refunds are not active during Pay on Delivery, but an admin can review and mediate the report.'
-    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'Campus Market currently uses Pay on Delivery while verified Paystack payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
+    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'Campus Market currently uses Pay on Delivery while verified Flutterwave payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
     if (text.includes('sell') || text.includes('seller') || text.includes('product')) return 'Create a seller account, choose a separate store name and wait for approval. After approval, open Seller Dashboard from your profile menu and upload 1–6 clear product images, delivery prices and an accurate description.'
     if (text.includes('delivery') || text.includes('shipping') || text.includes('state')) return 'Each seller enters a local delivery price and a nationwide price. Your final estimate depends on the seller location and your delivery state. For interstate orders, ask for tracked delivery.'
     if (text.includes('scam') || text.includes('fraud') || text.includes('report') || text.includes('threat')) return 'Do not pay or share private codes. Save evidence, report the order, and tap “Talk to a person” below so an admin or moderator can investigate the full conversation.'
@@ -868,58 +894,127 @@ const SupportChat = () => {
   )
 }
 
-// Product-Seller Chat Component
+// Shared buyer/seller message inbox
+const MessagesPage = () => {
+  const { user } = useAuth()
+  const { chats, fetchChats, sendMessage } = useChat()
+  const navigate = useNavigate()
+  const [activeId, setActiveId] = useState(null)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    if (!user) { navigate('/login'); return }
+    fetchChats()
+    const interval = setInterval(fetchChats, 15000)
+    return () => clearInterval(interval)
+  }, [user?._id])
+
+  useEffect(() => {
+    if (!activeId && chats?.length) setActiveId(chats[0]._id)
+  }, [chats, activeId])
+
+  if (!user) return null
+  const activeChat = (chats || []).find(chat => chat._id === activeId)
+  const otherPerson = activeChat?.participants?.find(person => String(person._id) !== String(user._id))
+
+  const handleReply = async () => {
+    if (!message.trim() || !otherPerson || sending) return
+    setSending(true)
+    const result = await sendMessage(otherPerson._id, message.trim(), activeChat.type || 'buyer_to_seller', activeChat.product?._id)
+    setSending(false)
+    if (result?.success) {
+      setMessage('')
+      await fetchChats()
+    } else setToast({ message: result?.message || 'Unable to send message', type: 'error' })
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 py-5 sm:py-8">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex items-end justify-between mb-5"><div><h1 className="text-2xl font-black text-gray-900">💬 Messages</h1><p className="text-sm text-gray-500">Buyer–seller product conversations stay here for easy follow-up and safety.</p></div><button onClick={fetchChats} className="text-xs bg-white border px-3 py-2 rounded-lg">↻ Refresh</button></div>
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden grid md:grid-cols-[320px_1fr] min-h-[620px]">
+          <aside className="border-r bg-gray-50 max-h-[620px] overflow-y-auto">
+            <div className="p-4 border-b bg-white"><p className="font-bold text-sm">Conversations ({chats?.length || 0})</p></div>
+            {(chats || []).length ? chats.map(chat => {
+              const person = chat.participants?.find(item => String(item._id) !== String(user._id))
+              const last = chat.messages?.[chat.messages.length - 1]
+              return <button key={chat._id} onClick={() => setActiveId(chat._id)} className={`w-full p-4 text-left border-b hover:bg-white ${activeId === chat._id ? 'bg-orange-50 border-l-4 border-l-orange-500' : ''}`}><div className="flex gap-3"><div className="w-10 h-10 flex-shrink-0 bg-orange-100 text-orange-700 rounded-full flex items-center justify-center font-bold">{(person?.sellerProfile?.storeName || person?.name || 'U').charAt(0)}</div><div className="min-w-0"><p className="font-bold text-sm truncate">{person?.sellerProfile?.storeName || person?.name || 'Marketplace user'}</p><p className="text-xs text-gray-500 truncate">{chat.product?.title || 'Product conversation'}</p><p className="text-xs text-gray-400 truncate mt-1">{last?.message || 'No message'}</p></div></div></button>
+            }) : <div className="p-8 text-center text-gray-500"><span className="text-4xl block">💬</span><p className="font-bold mt-3">No conversations yet</p><p className="text-xs mt-1">Open a product and choose Chat with Seller.</p><button onClick={() => navigate('/products')} className="mt-4 text-orange-600 font-bold text-sm">Browse products</button></div>}
+          </aside>
+
+          <section className="flex flex-col min-w-0">
+            {activeChat ? <>
+              <div className="p-4 border-b flex items-center justify-between gap-3"><div className="min-w-0"><p className="font-bold text-gray-900 truncate">{otherPerson?.sellerProfile?.storeName || otherPerson?.name}</p><button onClick={() => activeChat.product?._id && navigate(`/products/${activeChat.product._id}`)} className="text-xs text-orange-600 truncate max-w-full">Re: {activeChat.product?.title || 'Product'} →</button></div><span className="text-xs text-green-600">● Conversation open</span></div>
+              <div className="flex-1 p-4 sm:p-6 space-y-3 overflow-y-auto bg-gray-50 max-h-[450px]">{(activeChat.messages || []).map((item, index) => { const mine = String(item.sender?._id || item.sender) === String(user._id); return <div key={item._id || index} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] p-3 rounded-2xl text-sm ${mine ? 'bg-orange-500 text-white rounded-br-sm' : 'bg-white border text-gray-800 rounded-bl-sm'}`}><p>{item.message}</p><p className={`text-[10px] mt-1 ${mine ? 'text-orange-100' : 'text-gray-400'}`}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}</p></div></div>})}</div>
+              <div className="p-4 border-t"><div className="flex gap-2"><textarea value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleReply() }} rows={2} maxLength={2000} placeholder="Type your reply..." className="min-w-0 flex-1 border rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500" /><button onClick={handleReply} disabled={sending || !message.trim()} className="px-5 bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50">{sending ? '...' : 'Send'}</button></div><p className="text-[10px] text-gray-400 mt-2">Keep discussions respectful. Never send passwords, OTPs or card PINs.</p></div>
+            </> : <div className="flex-1 flex items-center justify-center text-center text-gray-400 p-8"><div><span className="text-5xl">💬</span><p className="mt-3">Select a conversation</p></div></div>}
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Product-to-seller chat is visible to everyone; sign-in is required only when opening it.
 const ProductChat = ({ sellerId, productTitle, productId }) => {
   const { user } = useAuth()
-  const { sendMessage } = useChat()
+  const { chats, fetchChats, sendMessage } = useChat()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
   const [toast, setToast] = useState(null)
-  
-  const handleSend = async () => {
-    if (!message.trim()) return
+  const conversation = (chats || []).find(chat => String(chat.product?._id || chat.product) === String(productId) && chat.participants?.some(person => String(person._id || person) === String(sellerId)))
+
+  const openChat = async () => {
     if (!user) {
-      setToast({ message: 'Please login first', type: 'error' })
+      sessionStorage.setItem('returnAfterLogin', window.location.pathname)
+      navigate('/login')
       return
     }
-    
-    const result = await sendMessage(sellerId, message, 'buyer_to_seller', productId)
+    await fetchChats()
+    setOpen(true)
+  }
+
+  const handleSend = async () => {
+    if (!message.trim() || sending) return
+    setSending(true)
+    const result = await sendMessage(sellerId, message.trim(), 'buyer_to_seller', productId)
+    setSending(false)
     if (result?.success) {
       setToast({ message: '✓ Message sent to seller!', type: 'success' })
       setMessage('')
-      setOpen(false)
-    } else {
-      setToast({ message: result?.message || 'Unable to send message', type: 'error' })
-    }
+      await fetchChats()
+    } else setToast({ message: result?.message || 'Unable to send message', type: 'error' })
   }
-  
-  if (!user) return null
-  
+
+  if (user?._id && String(user._id) === String(sellerId)) {
+    return <div className="mt-4 text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2">🏪 This is your own listing</div>
+  }
+
   return (
     <div>
-      <button onClick={() => setOpen(true)} className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm font-bold rounded hover:bg-blue-600">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      <button onClick={openChat} className="mt-4 w-full sm:w-auto px-5 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 shadow-sm">
         💬 Chat with Seller
       </button>
-      
-      {open && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
-          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-800">💬 Chat with Seller</h3>
-              <button onClick={() => setOpen(false)} className="text-gray-500 text-xl">✕</button>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">Re: {productTitle}</p>
-            <textarea value={message} onChange={e => setMessage(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg mb-4 text-sm" rows={4}
-              placeholder="Type your message to the seller..." />
-            <div className="flex gap-3">
-              <button onClick={() => setOpen(false)} className="flex-1 py-2 bg-gray-300 text-gray-700 font-bold rounded">Cancel</button>
-              <button onClick={handleSend} className="flex-1 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-600">Send Message</button>
-            </div>
+      {!user && <p className="text-[11px] text-gray-500 mt-1">Sign in to ask the seller about this product.</p>}
+
+      {open && <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-4"><div><h3 className="font-bold text-gray-900">💬 Chat with Seller</h3><p className="text-xs text-gray-500 mt-1">Re: {productTitle}</p></div><button onClick={() => setOpen(false)} className="text-gray-500 text-xl">✕</button></div>
+          <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-lg mb-3">Keep product questions and agreements in this chat so support can review them if a problem is reported.</div>
+          <div className="h-52 overflow-y-auto bg-gray-50 border rounded-xl p-3 space-y-2 mb-3">
+            {conversation?.messages?.length ? conversation.messages.map((item, index) => { const mine = String(item.sender?._id || item.sender) === String(user?._id); return <div key={item._id || index} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs ${mine ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white border text-gray-800 rounded-bl-sm'}`}><p>{item.message}</p>{item.createdAt && <p className={`text-[9px] mt-1 ${mine ? 'text-blue-100' : 'text-gray-400'}`}>{new Date(item.createdAt).toLocaleString()}</p>}</div></div> }) : <div className="h-full flex items-center justify-center text-center text-gray-400 text-xs"><div><span className="text-3xl block">💬</span>No previous messages about this product.<br />Start the conversation below.</div></div>}
           </div>
+          <textarea value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleSend() }} className="w-full px-4 py-3 border rounded-xl mb-2 text-sm focus:border-blue-500 outline-none" rows={3} maxLength={2000} placeholder="Ask about condition, availability, delivery, size, warranty..." />
+          <div className="flex items-center justify-between gap-2 mb-4"><p className="text-[10px] text-gray-400">Ctrl + Enter to send • Never share OTPs or PINs.</p><button onClick={() => navigate('/messages')} className="text-[10px] text-blue-600 font-bold">View all conversations →</button></div>
+          <div className="flex gap-3"><button onClick={() => setOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl">Close</button><button onClick={handleSend} disabled={sending || !message.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50">{sending ? 'Sending...' : 'Send Message'}</button></div>
         </div>
-      )}
+      </div>}
     </div>
   )
 }
@@ -961,7 +1056,7 @@ const Header = () => {
   const accountDropdown = profileMenuOpen && isAuthenticated && (
     <>
       <button aria-label="Close account menu" onClick={() => setProfileMenuOpen(false)} className="fixed inset-0 z-[70] bg-black/10" />
-      <div className="fixed z-[80] right-3 sm:right-6 top-28 sm:top-32 w-[min(22rem,calc(100vw-1.5rem))] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-fade-in">
+      <div className="fixed z-[80] right-3 sm:right-6 top-28 sm:top-32 w-[min(22rem,calc(100vw-1.5rem))] max-h-[calc(100vh-8rem)] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200 animate-fade-in">
         <div className="p-4 bg-gradient-to-r from-orange-500 to-red-500 text-white">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-white text-orange-600 rounded-full flex items-center justify-center text-xl font-black">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</div>
@@ -972,6 +1067,7 @@ const Header = () => {
           <button onClick={() => go('/profile')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">👤</span><span><strong className="block">My Profile</strong><span className="text-xs text-gray-500">Personal information and security</span></span></button>
           <button onClick={() => go('/orders')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">📦</span><span><strong className="block">My Orders</strong><span className="text-xs text-gray-500">Track purchases and report issues</span></span></button>
           <button onClick={() => go('/wishlist')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">❤️</span><span><strong className="block">Wishlist</strong><span className="text-xs text-gray-500">{wishlist.length} saved product(s)</span></span></button>
+          <button onClick={() => go('/messages')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-left text-sm"><span className="text-xl">💬</span><span><strong className="block">Messages</strong><span className="text-xs text-gray-500">Chat with buyers and sellers</span></span></button>
           {(user?.role === 'seller' || user?.role === 'admin') && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-orange-50 text-left text-sm text-orange-800"><span className="text-xl">🏪</span><span><strong className="block">Seller Dashboard</strong><span className="text-xs text-orange-600">Products, images, orders and wallet</span></span></button>}
           {(user?.role === 'admin' || user?.role === 'moderator') && <button onClick={() => go('/admin')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-purple-50 text-left text-sm text-purple-800"><span className="text-xl">🛡️</span><span><strong className="block">{user.role === 'admin' ? 'Admin Dashboard' : 'Moderator Dashboard'}</strong><span className="text-xs text-purple-600">Approvals, reports and human support</span></span></button>}
           <div className="border-t my-2" />
@@ -1012,6 +1108,7 @@ const Header = () => {
             <div className="flex items-center gap-1 sm:gap-3">
               <Link to="/wishlist" className="hidden sm:flex relative w-10 h-10 items-center justify-center text-white text-xl" aria-label="Wishlist">❤️{wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{wishlist.length}</span>}</Link>
               <Link to="/cart" className="relative w-10 h-10 flex items-center justify-center text-white text-xl" aria-label="Cart">🛒{summary.itemCount > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{summary.itemCount}</span>}</Link>
+              {isAuthenticated && <NotificationBell />}
               {isAuthenticated ? <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} className="w-10 h-10 bg-white rounded-full text-orange-600 font-black shadow flex items-center justify-center" aria-label="Open account menu">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</button> : <Link to="/login" className="hidden sm:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">Sign In</Link>}
             </div>
           </div>
@@ -1395,6 +1492,50 @@ const HomePage = () => {
   )
 }
 
+// Public, shareable seller storefront backed only by real marketplace records
+const StorePage = () => {
+  const sellerId = window.location.pathname.split('/').pop()
+  const { user } = useAuth()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [following, setFollowing] = useState(false)
+  const [toast, setToast] = useState(null)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`${API_URL}/api/stores/${sellerId}`).then(r => r.json()).then(result => { if (result.success) setData(result.data); setLoading(false) }).catch(() => setLoading(false))
+    if (user) fetch(`${API_URL}/api/stores/${sellerId}/follow-status`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).then(result => result.success && setFollowing(result.data.following)).catch(() => {})
+  }, [sellerId, user?._id])
+
+  const toggleFollow = async () => {
+    if (!user) { sessionStorage.setItem('returnAfterLogin', window.location.pathname); navigate('/login'); return }
+    const result = await fetch(`${API_URL}/api/stores/${sellerId}/follow`, { method: following ? 'DELETE' : 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
+    if (result.success) { setFollowing(!following); setData(current => ({ ...current, metrics: { ...current.metrics, followers: Math.max(0, (current.metrics.followers || 0) + (following ? -1 : 1)) } })) }
+  }
+
+  const shareStore = async () => {
+    const share = { title: `${data?.seller?.sellerProfile?.storeName || data?.seller?.name} on Campus Market`, text: 'Explore this verified Campus Market store.', url: window.location.href }
+    try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Store link copied', type: 'success' }) } } catch {}
+  }
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
+  if (!data) return <div className="min-h-screen flex items-center justify-center text-center"><div><span className="text-6xl">🏪</span><h1 className="text-2xl font-bold mt-4">Store not found</h1><button onClick={() => navigate('/products')} className="mt-4 text-orange-600 font-bold">Browse products</button></div></div>
+  const { seller, products, metrics } = data
+  return <div className="min-h-screen bg-gray-100">
+    {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+    <section className="relative bg-gradient-to-r from-gray-950 via-gray-900 to-orange-950 text-white overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 py-10 sm:py-16 relative z-10"><div className="flex flex-col md:flex-row md:items-end justify-between gap-6"><div className="flex items-center gap-4"><div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl bg-white text-orange-600 flex items-center justify-center text-4xl font-black shadow-xl overflow-hidden">{seller.sellerProfile?.logo ? <img src={seller.sellerProfile.logo} className="w-full h-full object-cover" /> : (seller.sellerProfile?.storeName || seller.name).charAt(0)}</div><div><div className="flex items-center gap-2 flex-wrap"><h1 className="text-2xl sm:text-4xl font-black">{seller.sellerProfile?.storeName || seller.name}</h1><VerificationBadge level={seller.verificationLevel} /></div><p className="text-gray-300 mt-2 max-w-xl">{seller.sellerProfile?.description || 'Independent seller on Campus Market.'}</p><p className="text-xs text-gray-400 mt-2">📍 {seller.address?.state || 'Nigeria'} • Member since {new Date(seller.createdAt).getFullYear()}</p></div></div><div className="flex gap-2"><button onClick={toggleFollow} className={`px-5 py-3 rounded-xl font-bold ${following ? 'bg-white text-gray-800' : 'bg-orange-500 text-white'}`}>{following ? '✓ Following' : '+ Follow Store'}</button><button onClick={shareStore} className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl">↗ Share</button></div></div></div>
+    </section>
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">{[['Products', metrics.products], ['Delivered sales', metrics.deliveredSales], ['Followers', metrics.followers], ['Verified reviews', metrics.reviews], ['Rating', `${Number(metrics.rating || 0).toFixed(1)}★`]].map(([label,value]) => <div key={label} className="bg-white border rounded-xl p-4 text-center"><p className="text-xl font-black text-gray-900">{value}</p><p className="text-xs text-gray-500 mt-1">{label}</p></div>)}</div>
+      {(seller.sellerProfile?.returnPolicy || seller.sellerProfile?.pickupAddress) && <div className="grid md:grid-cols-2 gap-3 mb-8">{seller.sellerProfile.returnPolicy && <div className="bg-blue-50 border border-blue-200 rounded-xl p-4"><h3 className="font-bold text-blue-900">↩ Store return policy</h3><p className="text-sm text-blue-800 mt-2">{seller.sellerProfile.returnPolicy}</p></div>}{seller.sellerProfile.pickupAddress && <div className="bg-green-50 border border-green-200 rounded-xl p-4"><h3 className="font-bold text-green-900">📍 Pickup information</h3><p className="text-sm text-green-800 mt-2">{seller.sellerProfile.pickupAddress}</p></div>}</div>}
+      <div className="flex items-center justify-between mb-5"><div><h2 className="text-2xl font-black text-gray-900">Store products</h2><p className="text-sm text-gray-500">{products.length} approved listing(s)</p></div></div>
+      {products.length ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">{products.map(product => <ProductCard key={product._id} product={product} />)}</div> : <div className="bg-white p-12 text-center rounded-xl text-gray-500">No active products in this store.</div>}
+    </div>
+  </div>
+}
+
 // Products Page with Advanced Filters
 const ProductsPage = () => {
   const [products, setProducts] = useState([])
@@ -1544,6 +1685,9 @@ const ProductDetailPage = () => {
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
   const [reviews, setReviews] = useState([])
+  const [similarProducts, setSimilarProducts] = useState([])
+  const [sellerProducts, setSellerProducts] = useState([])
+  const [sellerMetrics, setSellerMetrics] = useState({})
   const [selectedImage, setSelectedImage] = useState(0)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const { addToCart } = useCart()
@@ -1561,6 +1705,9 @@ const ProductDetailPage = () => {
         setSelectedImage(0)
         addToRecentlyViewed(d.data.product)
         setReviews(d.data.reviews || [])
+        setSimilarProducts(d.data.similarProducts || [])
+        setSellerProducts(d.data.sellerProducts || [])
+        setSellerMetrics(d.data.sellerMetrics || {})
       }
       setLoading(false) 
     })
@@ -1578,6 +1725,23 @@ const ProductDetailPage = () => {
     const result = await addToCart(product._id, quantity)
     if (result?.success) navigate('/checkout')
     else setToast({ message: result?.message || 'Failed', type: 'error' })
+  }
+
+  const handleShareProduct = async () => {
+    const share = { title: product.title, text: `Check out ${product.title} on Campus Market for ₦${product.price?.toLocaleString()}`, url: window.location.href }
+    try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Product link copied', type: 'success' }) } } catch {}
+  }
+
+  const handleReportProduct = async () => {
+    if (!user) { sessionStorage.setItem('returnAfterLogin', window.location.pathname); navigate('/login'); return }
+    const category = window.prompt('Report category: counterfeit, prohibited, misleading, scam, duplicate or other', 'misleading')
+    if (!category) return
+    const reason = window.prompt('Explain the problem with this listing:')
+    if (!reason) return
+    try {
+      const result = await fetch(`${API_URL}/api/products/${product._id}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ category: category.toLowerCase(), reason }) }).then(r => r.json())
+      setToast({ message: result.message || (result.success ? 'Listing reported' : 'Unable to report listing'), type: result.success ? 'success' : 'error' })
+    } catch { setToast({ message: 'Unable to submit report', type: 'error' }) }
   }
 
   const handleReviewSubmit = (reviewData) => {
@@ -1647,6 +1811,7 @@ const ProductDetailPage = () => {
                   ))}
                 </div>
               )}
+              {product.images?.some(image => typeof image === 'string' && image.startsWith('/uploads/')) && <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800"><strong>Old image unavailable:</strong> this photo was saved by the previous temporary upload system and no longer exists on Render. The seller must edit this product, remove the old image and upload it again.</div>}
               <p className="text-xs text-gray-500 mt-3 text-center">📍 Ships from {product.location || 'Nigeria'}</p>
             </div>
             
@@ -1715,7 +1880,7 @@ const ProductDetailPage = () => {
                 <div className="bg-blue-50 p-3 rounded-lg mb-4 flex items-start gap-2">
                   <span className="text-blue-600">🛡️</span>
                   <div className="text-xs text-blue-700 space-y-1">
-                    <p><strong>Safer shopping:</strong> inspect or confirm your order before paying on delivery while verified Paystack payments are being prepared.</p>
+                    <p><strong>Safer shopping:</strong> inspect or confirm your order before paying on delivery while verified Flutterwave payments are being prepared.</p>
                     <p>Delivery estimate: ₦{(product.shipping?.localFee || 1000).toLocaleString()} within seller's state; ₦{(product.shipping?.nationwideFee || 2500).toLocaleString()} nationwide.</p>
                   </div>
                 </div>
@@ -1732,36 +1897,28 @@ const ProductDetailPage = () => {
                   </button>
                 </div>
                 
-                {/* Save for Later */}
-                <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
                   <WishlistButton product={product} />
-                  <span className="text-sm text-gray-500">Add to Wishlist</span>
+                  <span className="text-sm text-gray-500 mr-2">Wishlist</span>
+                  <button onClick={handleShareProduct} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold">↗ Share</button>
+                  <button onClick={handleReportProduct} className="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold">⚑ Report listing</button>
                 </div>
                 
                 {/* Chat with Seller */}
-                {user && product.seller?._id && product.chatEnabled !== false && product.seller?.sellerProfile?.chatEnabled !== false && (
+                {product.seller?._id && product.chatEnabled !== false && product.seller?.sellerProfile?.chatEnabled !== false && (
                   <ProductChat sellerId={product.seller._id} productId={product._id} productTitle={product.title} />
                 )}
               </div>
               
-              {/* Supplier Info */}
-              <div className="bg-white rounded-lg p-4 sm:p-6">
-                <h3 className="font-bold text-gray-800 mb-3 text-sm sm:text-base">🏪 Supplier</h3>
+              {/* Seller identity uses only real marketplace records */}
+              <div className="bg-white rounded-xl p-4 sm:p-6">
+                <h3 className="font-bold text-gray-800 mb-3 text-sm sm:text-base">🏪 Sold by</h3>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                    <span className="text-orange-600 font-bold text-xl">{product.seller?.name?.charAt(0)}</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-800">{product.seller?.sellerProfile?.storeName || product.seller?.name}</p>
-                    <p className="text-xs text-green-600">✓ Admin Verified Supplier</p>
-                    <p className="text-xs text-gray-500">Rating: ⭐ {product.seller?.sellerProfile?.rating || 0}</p>
-                  </div>
-                  <button onClick={() => navigate(`/products?seller=${product.seller?._id}`)} 
-                    className="px-3 py-1 bg-orange-100 text-orange-600 rounded text-xs font-medium hover:bg-orange-200">
-                    View Store
-                  </button>
+                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center"><span className="text-orange-600 font-bold text-xl">{(product.seller?.sellerProfile?.storeName || product.seller?.name)?.charAt(0)}</span></div>
+                  <div className="flex-1 min-w-0"><p className="font-bold text-gray-800 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name}</p><VerificationBadge level={sellerMetrics.verificationLevel} /><p className="text-xs text-gray-500 mt-1">⭐ {Number(product.seller?.sellerProfile?.rating || 0).toFixed(1)} • {sellerMetrics.deliveredSales || 0} delivered • {sellerMetrics.followers || 0} followers</p></div>
+                  <button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="px-3 py-2 bg-orange-100 text-orange-700 rounded-lg text-xs font-bold hover:bg-orange-200">Visit Store</button>
                 </div>
-                {product.location && <p className="text-sm text-gray-500 mt-2">📍 {product.location}</p>}
+                {product.location && <p className="text-sm text-gray-500 mt-3">📍 Ships from {product.location}</p>}
               </div>
               
               {/* Description */}
@@ -1770,6 +1927,12 @@ const ProductDetailPage = () => {
                 <p className="text-gray-600 text-sm sm:text-base whitespace-pre-line">{product.description}</p>
               </div>
               
+              {(product.specifications?.length > 0 || product.warranty || product.returnPolicy || product.pickupLocation) && <div className="bg-white rounded-xl p-4 sm:p-6">
+                <h3 className="font-bold text-gray-800 mb-4">📋 Product details</h3>
+                {product.specifications?.length > 0 && <div className="divide-y border rounded-lg mb-4">{product.specifications.map((spec, index) => <div key={`${spec.name}-${index}`} className="grid grid-cols-3 gap-3 p-3 text-sm"><span className="text-gray-500">{spec.name}</span><span className="col-span-2 font-medium text-gray-800">{spec.value}</span></div>)}</div>}
+                <div className="grid sm:grid-cols-2 gap-3">{product.warranty && <div className="bg-blue-50 p-3 rounded-lg"><p className="text-xs font-bold text-blue-900">Warranty</p><p className="text-xs text-blue-800 mt-1">{product.warranty}</p></div>}{product.returnPolicy && <div className="bg-purple-50 p-3 rounded-lg"><p className="text-xs font-bold text-purple-900">Seller return terms</p><p className="text-xs text-purple-800 mt-1">{product.returnPolicy}</p></div>}{product.pickupLocation && <div className="bg-green-50 p-3 rounded-lg"><p className="text-xs font-bold text-green-900">Pickup</p><p className="text-xs text-green-800 mt-1">{product.pickupLocation}</p></div>}</div>
+              </div>}
+
               {/* Reviews Section */}
               <div className="bg-white rounded-lg p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -1834,6 +1997,9 @@ const ProductDetailPage = () => {
               </div>
             </div>
           </div>
+
+          {sellerProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">More from this seller</h2><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="text-sm font-bold text-orange-600">Visit store →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">{sellerProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
+          {similarProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">Similar products</h2><button onClick={() => navigate(`/products?category=${product.category}`)} className="text-sm font-bold text-orange-600">View category →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{similarProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
         </div>
       </div>
     </>
@@ -1941,7 +2107,11 @@ const CheckoutPage = () => {
   const [pendingOrderId, setPendingOrderId] = useState(null)
   const [pendingOrderAmount, setPendingOrderAmount] = useState(0)
   const [orderItems, setOrderItems] = useState([])
+  const [paymentMethod, setPaymentMethod] = useState('pay_on_delivery')
+  const [paymentConfig, setPaymentConfig] = useState({ paymentMode: 'not-configured' })
   const navigate = useNavigate()
+
+  useEffect(() => { fetch(`${API_URL}/api/health`).then(r => r.json()).then(data => { setPaymentConfig(data); if (data.paymentMode === 'test' || data.paymentMode === 'live') setPaymentMethod('flutterwave') }).catch(() => {}) }, [])
 
   if (!user) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><h2 className="text-2xl">Please sign in</h2></div>
   if (items.length === 0) return (
@@ -1962,17 +2132,20 @@ const CheckoutPage = () => {
       const res = await fetch(`${API_URL}/api/orders`, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, 
-        body: JSON.stringify({ shippingAddress: address }) 
+        body: JSON.stringify({ shippingAddress: address, paymentMethod }) 
       })
       const data = await res.json()
-      setLoading(false)
-      if (data.success) { 
+      if (data.success) {
         setPendingOrderId(data.data.order._id)
         setPendingOrderAmount(data.data.order.finalAmount || summary.total)
         setOrderItems(data.data.order.items || [])
-        setShowPayment(true) 
-      }
-      else setToast({ message: data.message || 'Order failed', type: 'error' })
+        if (paymentMethod === 'flutterwave') {
+          const payment = await fetch(`${API_URL}/api/payments/flutterwave/initialize`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ orderId: data.data.order._id }) }).then(r => r.json())
+          if (payment.success && payment.data.checkoutUrl) { window.location.href = payment.data.checkoutUrl; return }
+          setToast({ message: payment.message || 'Unable to open Flutterwave checkout', type: 'error' })
+        } else setShowPayment(true)
+      } else setToast({ message: data.message || 'Order failed', type: 'error' })
+      setLoading(false)
     } catch { setLoading(false); setToast({ message: 'Cannot connect to server', type: 'error' }) }
   }
 
@@ -2028,20 +2201,35 @@ const CheckoutPage = () => {
                 <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Total</span><span style={{ color: colors.primary }}>₦{summary.total?.toLocaleString()}</span></div>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mb-4">
-                <p className="text-xs font-bold text-blue-900">Temporary checkout: Pay on Delivery</p>
-                <p className="text-xs text-blue-700 mt-1">Online Paystack payment will be added after business verification. Never send money to an unverified account.</p>
+              <div className="space-y-2 mb-4">
+                <button onClick={() => setPaymentMethod('flutterwave')} disabled={!['test','live'].includes(paymentConfig.paymentMode)} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'flutterwave' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'} disabled:opacity-50`}><p className="font-bold text-sm">💳 Pay securely with Flutterwave {paymentConfig.paymentMode === 'test' && <span className="text-[10px] bg-yellow-200 px-2 py-0.5 rounded-full">TEST MODE</span>}</p><p className="text-xs text-gray-500 mt-1">Card, bank transfer, USSD and enabled methods. Payment is verified by the backend.</p></button>
+                <button onClick={() => setPaymentMethod('pay_on_delivery')} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'pay_on_delivery' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}><p className="font-bold text-sm">🚚 Pay on Delivery</p><p className="text-xs text-gray-500 mt-1">Inspect or confirm the order before paying the seller.</p></button>
               </div>
-              
-              <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50">
-                {loading ? 'Placing order...' : '✓ Place Pay-on-Delivery Order'}
-              </button>
+              {paymentConfig.paymentMode === 'not-configured' && <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 text-xs text-yellow-800">Flutterwave has not been configured on Render, so only Pay on Delivery is available.</div>}
+              <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50">{loading ? 'Processing...' : paymentMethod === 'flutterwave' ? 'Continue to Flutterwave' : 'Place Pay-on-Delivery Order'}</button>
             </div>
           </div>
         </div>
       </div>
     </>
   )
+}
+
+// Flutterwave redirect result is never trusted until backend verification succeeds.
+const PaymentCallbackPage = () => {
+  const { clearCart } = useCart()
+  const navigate = useNavigate()
+  const [state, setState] = useState({ loading: true, success: false, message: 'Verifying your payment securely...' })
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('status')
+    const txRef = params.get('tx_ref')
+    const transactionId = params.get('transaction_id')
+    if (status !== 'successful' || !txRef || !transactionId) { setState({ loading: false, success: false, message: status === 'cancelled' ? 'Payment was cancelled. Your order remains unpaid.' : 'Payment was not completed.' }); return }
+    fetch(`${API_URL}/api/payments/flutterwave/verify?tx_ref=${encodeURIComponent(txRef)}&transaction_id=${encodeURIComponent(transactionId)}`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      .then(r => r.json()).then(data => { if (data.success) { clearCart(); setState({ loading: false, success: true, message: 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
+  }, [])
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-orange-500 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
 }
 
 // My Orders Page with Tracking and Reports
@@ -2082,6 +2270,30 @@ const MyOrdersPage = () => {
     }
   }
 
+  const retryFlutterwave = async order => {
+    try {
+      const data = await fetch(`${API_URL}/api/payments/flutterwave/initialize`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ orderId: order._id }) }).then(r => r.json())
+      if (data.success && data.data.checkoutUrl) window.location.href = data.data.checkoutUrl
+      else setToast({ message: data.message || 'Unable to restart payment', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to payment service', type: 'error' }) }
+  }
+
+  const cancelUnpaidOrder = async order => {
+    if (!window.confirm('Cancel this unpaid order and return its stock?')) return
+    const data = await fetch(`${API_URL}/api/orders/${order._id}/cancel`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Connection failed' }))
+    if (data.success) { setOrders(current => current.map(item => item._id === order._id ? { ...item, status: 'cancelled' } : item)); setToast({ message: data.message, type: 'success' }) }
+    else setToast({ message: data.message || 'Unable to cancel order', type: 'error' })
+  }
+
+  const confirmDelivery = async orderId => {
+    if (!window.confirm('Confirm that you received and inspected this order? This releases the seller’s pending earnings.')) return
+    try {
+      const data = await fetch(`${API_URL}/api/orders/${orderId}/confirm-delivery`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
+      if (data.success) { setOrders(current => current.map(order => order._id === orderId ? { ...order, buyerConfirmedDeliveryAt: new Date().toISOString() } : order)); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to confirm delivery', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
+  }
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-700'
@@ -2111,6 +2323,7 @@ const MyOrdersPage = () => {
                   <div>
                     <p className="font-bold text-gray-800">Order #{order._id.slice(-8).toUpperCase()}</p>
                     <p className="text-xs sm:text-sm text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</p>
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${order.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.paymentStatus === 'paid' ? '✓ Payment verified' : order.paymentMethod === 'pay_on_delivery' ? 'Pay on Delivery' : 'Payment pending'}</span>
                     {order.transactionId && <p className="text-xs text-gray-400">TXN: {order.transactionId}</p>}
                   </div>
                   <span className={`px-3 sm:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-bold capitalize ${getStatusColor(order.status)}`}>
@@ -2145,11 +2358,10 @@ const MyOrdersPage = () => {
                   <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200">
                     📦 View Order Details
                   </button>
-                  {order.status === 'delivered' && (
-                    <button className="px-4 py-2 bg-orange-100 text-orange-600 text-xs font-medium rounded hover:bg-orange-200">
-                      ✍️ Leave Review
-                    </button>
-                  )}
+                  {order.paymentMethod === 'flutterwave' && order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => retryFlutterwave(order)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded">Retry Flutterwave Payment</button>}
+                  {order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => cancelUnpaidOrder(order)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded">Cancel Unpaid Order</button>}
+                  {order.status === 'delivered' && <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-orange-100 text-orange-600 text-xs font-medium rounded hover:bg-orange-200">✍️ Leave Review</button>}
+                  {order.status === 'delivered' && order.paymentStatus === 'paid' && !order.buyerConfirmedDeliveryAt && <button onClick={() => confirmDelivery(order._id)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">✓ Confirm Delivery & Release Seller</button>}
                   {order.status !== 'cancelled' && (
                     <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
                       🚨 Report Issue / Request Refund
@@ -2244,8 +2456,11 @@ const LoginPage = () => {
     setLoading(true)
     const result = await login(email, password)
     setLoading(false)
-    if (result.success) navigate('/')
-    else setError(result.message || 'Invalid credentials')
+    if (result.success) {
+      const returnTo = sessionStorage.getItem('returnAfterLogin') || '/'
+      sessionStorage.removeItem('returnAfterLogin')
+      navigate(returnTo)
+    } else setError(result.message || 'Invalid credentials')
   }
 
   return (
@@ -2296,7 +2511,7 @@ const LoginPage = () => {
 const RegisterPage = () => {
   const { register, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'buyer', phone: '', storeName: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'buyer', phone: '', storeName: '', referralCode: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -2356,6 +2571,7 @@ const RegisterPage = () => {
               <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
               <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="09051103883" />
             </div>
+            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Referral Code (optional)</label><input value={form.referralCode} onChange={e => setForm({...form, referralCode: e.target.value.toUpperCase()})} className="w-full px-4 py-3 border border-gray-300 rounded text-sm uppercase" placeholder="Enter a friend’s code" /></div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Password * (min 8 chars)</label>
               <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Min 8 characters" required />
@@ -2390,6 +2606,7 @@ const SellerDashboard = () => {
   const [stats, setStats] = useState(null)
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
+  const [walletData, setWalletData] = useState({ availableBalance: 0, pendingBalance: 0, totalWithdrawn: 0, transactions: [], withdrawals: [], bankAccount: null, minimumWithdrawal: 5000 })
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [toast, setToast] = useState(null)
@@ -2402,8 +2619,10 @@ const SellerDashboard = () => {
     title: '', description: '', price: '', originalPrice: '', stock: '', brand: '', tags: '',
     category: 'phones-accessories', condition: 'new', location: '',
     localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
-    pickupAvailable: true, freeShipping: false, chatEnabled: true
+    pickupAvailable: true, freeShipping: false, chatEnabled: true,
+    warranty: '', returnPolicy: '', pickupLocation: ''
   })
+  const [productSpecs, setProductSpecs] = useState([{ name: '', value: '' }])
   const [productImages, setProductImages] = useState([])
   const [uploading, setUploading] = useState(false)
   const navigate = useNavigate()
@@ -2414,10 +2633,12 @@ const SellerDashboard = () => {
       fetch(`${API_URL}/api/orders/seller/stats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
       fetch(`${API_URL}/api/products/seller/my-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
       fetch(`${API_URL}/api/orders/seller/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
-    ]).then(([statsData, productsData, ordersData]) => {
+      fetch(`${API_URL}/api/seller/wallet`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+    ]).then(([statsData, productsData, ordersData, walletResult]) => {
       if (statsData.success) setStats(statsData.data)
       if (productsData.success) setProducts(productsData.data.products)
       if (ordersData.success) setOrders(ordersData.data.orders)
+      if (walletResult.success) setWalletData(walletResult.data)
       setLoading(false)
     })
   }, [user, navigate])
@@ -2449,7 +2670,7 @@ const SellerDashboard = () => {
     }
     
     const amount = parseFloat(withdrawAmount)
-    const availableBalance = user?.walletBalance || 0
+    const availableBalance = walletData.availableBalance || 0
     
     if (amount > availableBalance) {
       setToast({ message: 'Insufficient balance', type: 'error' })
@@ -2468,6 +2689,7 @@ const SellerDashboard = () => {
       if (data.success) {
         setToast({ message: '✓ Withdrawal request submitted! Admin will process within 24 hours.', type: 'success' })
         setShowWithdraw(false)
+        setWalletData(current => ({ ...current, availableBalance: Math.max(0, current.availableBalance - amount), withdrawals: [data.data.withdrawal, ...(current.withdrawals || [])] }))
         setWithdrawAmount('')
       } else {
         setToast({ message: data.message || 'Withdrawal failed', type: 'error' })
@@ -2476,6 +2698,20 @@ const SellerDashboard = () => {
       setWithdrawLoading(false)
       setToast({ message: 'Withdrawal failed', type: 'error' })
     }
+  }
+
+  const addBankAccount = async () => {
+    const bankName = window.prompt('Bank name:')
+    if (!bankName) return
+    const accountNumber = window.prompt('10-digit account number:')
+    if (!accountNumber) return
+    const accountName = window.prompt('Account name exactly as shown by the bank:')
+    if (!accountName) return
+    try {
+      const data = await fetch(`${API_URL}/api/seller/bank-account`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ bankName, accountNumber, accountName }) }).then(r => r.json())
+      if (data.success) { setWalletData(current => ({ ...current, bankAccount: { bankName, accountNumber, accountName, isVerified: false } })); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to save bank account', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
   const handleImageSelection = async (event) => {
@@ -2512,8 +2748,10 @@ const SellerDashboard = () => {
       stock: product.stock ?? '', brand: product.brand || '', tags: (product.tags || []).join(', '), category: product.category || 'other',
       condition: product.condition || 'new', location: product.location || '', localDeliveryFee: product.shipping?.localFee ?? '1000',
       nationwideDeliveryFee: product.shipping?.nationwideFee ?? '2500', processingDays: product.shipping?.processingDays ?? '2',
-      pickupAvailable: product.shipping?.pickupAvailable !== false, freeShipping: Boolean(product.shipping?.freeShipping), chatEnabled: product.chatEnabled !== false
+      pickupAvailable: product.shipping?.pickupAvailable !== false, freeShipping: Boolean(product.shipping?.freeShipping), chatEnabled: product.chatEnabled !== false,
+      warranty: product.warranty || '', returnPolicy: product.returnPolicy || '', pickupLocation: product.pickupLocation || ''
     })
+    setProductSpecs(product.specifications?.length ? product.specifications.map(item => ({ name: item.name || '', value: item.value || '' })) : [{ name: '', value: '' }])
     setProductImages((product.images || []).map((url, index) => ({ existingUrl: url, preview: url, file: null, id: `existing-${index}-${url}` })))
     setShowAddProduct(true)
   }
@@ -2523,8 +2761,10 @@ const SellerDashboard = () => {
       title: '', description: '', price: '', originalPrice: '', stock: '', brand: '', tags: '',
       category: 'phones-accessories', condition: 'new', location: '',
       localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
-      pickupAvailable: true, freeShipping: false, chatEnabled: true
+      pickupAvailable: true, freeShipping: false, chatEnabled: true,
+      warranty: '', returnPolicy: '', pickupLocation: ''
     })
+    setProductSpecs([{ name: '', value: '' }])
     setProductImages([])
     setEditingProduct(null)
   }
@@ -2543,6 +2783,7 @@ const SellerDashboard = () => {
     try {
       const formData = new FormData()
       Object.entries(productForm).forEach(([key, value]) => formData.append(key, String(value)))
+      formData.append('specifications', JSON.stringify(productSpecs.filter(item => item.name.trim() && item.value.trim())))
       formData.append('existingImages', JSON.stringify(productImages.filter(image => image.existingUrl).map(image => image.existingUrl)))
       productImages.filter(image => image.file).forEach(({ file }) => formData.append('images', file))
       const res = await fetch(editingProduct ? `${API_URL}/api/products/${editingProduct._id}` : `${API_URL}/api/products`, {
@@ -2638,12 +2879,12 @@ const SellerDashboard = () => {
                 </div>
                 <div className="bg-blue-50 p-4 rounded-lg mb-4">
                   <p className="text-sm text-gray-600">Available Balance</p>
-                  <p className="text-2xl font-bold text-blue-600">₦{(user?.walletBalance || 0).toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-blue-600">₦{(walletData.availableBalance || 0).toLocaleString()}</p>
                 </div>
                 <form onSubmit={handleWithdraw} className="space-y-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Amount to Withdraw (₦)</label>
-                    <input type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
+                    <input type="number" min={walletData.minimumWithdrawal || 5000} max={walletData.availableBalance || 0} value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm"
                       placeholder="Enter amount" required />
                   </div>
@@ -2760,6 +3001,12 @@ const SellerDashboard = () => {
                     </div>
                   </section>
 
+                  <section className="rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-3"><div><h3 className="font-bold text-gray-900">📋 Specifications</h3><p className="text-xs text-gray-500">Add factual details buyers can compare.</p></div>{productSpecs.length < 20 && <button type="button" onClick={() => setProductSpecs(current => [...current, { name: '', value: '' }])} className="text-xs font-bold text-orange-600">+ Add row</button>}</div>
+                    <div className="space-y-2">{productSpecs.map((spec, index) => <div key={index} className="grid grid-cols-[1fr_1.5fr_auto] gap-2"><input value={spec.name} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} placeholder="e.g. Colour" className="px-3 py-2 border rounded-lg text-sm" /><input value={spec.value} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, value: e.target.value } : item))} placeholder="e.g. Midnight Black" className="px-3 py-2 border rounded-lg text-sm" /><button type="button" onClick={() => setProductSpecs(current => current.length === 1 ? [{ name: '', value: '' }] : current.filter((_, i) => i !== index))} className="px-2 text-red-500">✕</button></div>)}</div>
+                    <div className="grid sm:grid-cols-3 gap-3 mt-4"><div><label className="text-xs text-gray-600">Warranty</label><input value={productForm.warranty} onChange={e => setProductForm({...productForm, warranty: e.target.value})} placeholder="e.g. 6 months seller warranty" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div><div><label className="text-xs text-gray-600">Return terms</label><input value={productForm.returnPolicy} onChange={e => setProductForm({...productForm, returnPolicy: e.target.value})} placeholder="e.g. 3 days if defective" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div><div><label className="text-xs text-gray-600">Pickup location</label><input value={productForm.pickupLocation} onChange={e => setProductForm({...productForm, pickupLocation: e.target.value})} placeholder="Public pickup area" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div></div>
+                  </section>
+
                   <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                     <h3 className="font-bold text-blue-900 mb-3">🚚 Delivery settings</h3>
                     <div className="grid sm:grid-cols-3 gap-3">
@@ -2836,7 +3083,7 @@ const SellerDashboard = () => {
                               <td className="py-4 pr-4">
                                 <div className="flex items-center gap-3 min-w-[220px]">
                                   <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0"><ProductImage product={p} alt={p.title} /></div>
-                                  <div><p className="font-medium line-clamp-2">{p.title}</p><p className="text-xs text-gray-400">{p.images?.length || 0} image(s)</p></div>
+                                  <div><p className="font-medium line-clamp-2">{p.title}</p><p className="text-xs text-gray-400">{p.images?.length || 0} image(s)</p>{p.images?.some(image => typeof image === 'string' && image.startsWith('/uploads/')) && <p className="text-[10px] text-red-600">Old image — edit and re-upload</p>}</div>
                                 </div>
                               </td>
                               <td className="py-4 pr-4 font-bold">₦{p.price?.toLocaleString()}</td>
@@ -2899,27 +3146,11 @@ const SellerDashboard = () => {
                 </div>
               )}
 
-              {activeTab === 'wallet' && (
-                <div>
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-6 rounded-lg mb-6">
-                    <p className="text-sm opacity-80">Available Balance</p>
-                    <p className="text-3xl font-bold">₦{(user?.walletBalance || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <h4 className="font-bold text-gray-800 mb-2">💵 Quick Withdraw</h4>
-                      <button onClick={() => setShowWithdraw(true)} className="w-full py-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600">
-                        Withdraw Funds
-                      </button>
-                    </div>
-                    <div className="p-4 bg-orange-50 rounded-lg">
-                      <h4 className="font-bold text-gray-800 mb-2">📊 Earning Stats</h4>
-                      <p className="text-sm text-gray-600">Total Earnings: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p>
-                      <p className="text-sm text-gray-600">Pending: ₦{(user?.pendingBalance || 0).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {activeTab === 'wallet' && <div>
+                <div className="grid sm:grid-cols-3 gap-3 mb-6"><div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-5 rounded-xl"><p className="text-xs opacity-80">Available to withdraw</p><p className="text-3xl font-black mt-1">₦{(walletData.availableBalance || 0).toLocaleString()}</p></div><div className="bg-orange-50 border border-orange-200 p-5 rounded-xl"><p className="text-xs text-orange-700">Pending until delivery</p><p className="text-2xl font-black text-orange-900 mt-1">₦{(walletData.pendingBalance || 0).toLocaleString()}</p></div><div className="bg-green-50 border border-green-200 p-5 rounded-xl"><p className="text-xs text-green-700">Total withdrawn</p><p className="text-2xl font-black text-green-900 mt-1">₦{(walletData.totalWithdrawn || 0).toLocaleString()}</p></div></div>
+                <div className="grid md:grid-cols-2 gap-4 mb-6"><div className="p-4 border rounded-xl"><h4 className="font-bold">🏦 Payout bank</h4>{walletData.bankAccount ? <div className="text-sm mt-2"><p>{walletData.bankAccount.bankName}</p><p className="font-bold">{walletData.bankAccount.accountName}</p><p>******{walletData.bankAccount.accountNumber?.slice(-4)}</p><span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full ${walletData.bankAccount.isVerified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{walletData.bankAccount.isVerified ? '✓ Verified' : 'Awaiting admin verification'}</span></div> : <p className="text-sm text-gray-500 mt-2">No payout account saved.</p>}<button onClick={addBankAccount} className="mt-3 text-sm font-bold text-blue-600">{walletData.bankAccount ? 'Change account' : 'Add bank account'}</button></div><div className="p-4 border rounded-xl"><h4 className="font-bold">💵 Manual withdrawal</h4><p className="text-xs text-gray-500 mt-2">Minimum ₦{(walletData.minimumWithdrawal || 5000).toLocaleString()}. Requested funds are reserved until admin pays, rejects or records a failure.</p><button onClick={() => setShowWithdraw(true)} disabled={!walletData.bankAccount?.isVerified || walletData.availableBalance < walletData.minimumWithdrawal} className="w-full mt-4 py-3 bg-blue-600 text-white font-bold rounded-lg disabled:opacity-40">Request Withdrawal</button></div></div>
+                <h4 className="font-bold mb-3">Withdrawal history</h4>{walletData.withdrawals?.length ? <div className="space-y-2">{walletData.withdrawals.map(item => <div key={item._id} className="border rounded-lg p-3 flex justify-between gap-3"><div><p className="font-bold text-sm">₦{item.amount?.toLocaleString()}</p><p className="text-xs text-gray-500">{item.reference}</p></div><div className="text-right"><span className="text-xs font-bold capitalize">{item.status}</span>{item.amountTransferred != null && <p className="text-xs text-green-600">Transferred ₦{item.amountTransferred.toLocaleString()}</p>}</div></div>)}</div> : <p className="text-sm text-gray-500">No withdrawal requests yet.</p>}
+              </div>}
             </div>
           </div>
         </div>
@@ -2934,7 +3165,10 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState(null)
   const [pendingProducts, setPendingProducts] = useState([])
   const [pendingSellers, setPendingSellers] = useState([])
+  const [pendingBanks, setPendingBanks] = useState([])
   const [reports, setReports] = useState([])
+  const [productReports, setProductReports] = useState([])
+  const [withdrawals, setWithdrawals] = useState([])
   const [supportTickets, setSupportTickets] = useState([])
   const [adminChats, setAdminChats] = useState([])
   const [moderators, setModerators] = useState([])
@@ -2953,7 +3187,7 @@ const AdminDashboard = () => {
       try {
         setLoading(true)
         setAdminError('')
-        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes] = await Promise.all([
+        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes] = await Promise.all([
           fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-products route is unavailable' })),
           fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-sellers route is unavailable' })),
@@ -2961,7 +3195,10 @@ const AdminDashboard = () => {
           fetch(`${API_URL}/api/admin/support-tickets`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/health?check=${Date.now()}`).then(r => r.json()).catch(() => ({ success: false })),
-          user.role === 'admin' ? fetch(`${API_URL}/api/admin/moderators`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { moderators: [] } })
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/moderators`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { moderators: [] } }),
+          fetch(`${API_URL}/api/admin/product-reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/withdrawals`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { withdrawals: [] } }),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/pending-bank-accounts`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { sellers: [] } })
         ])
         
         if (statsRes.success) setStats(statsRes.data)
@@ -2973,7 +3210,10 @@ const AdminDashboard = () => {
         if (ticketsRes.success) setSupportTickets(ticketsRes.data.tickets || [])
         if (chatsRes.success) setAdminChats(chatsRes.data.chats || [])
         if (moderatorsRes.success) setModerators(moderatorsRes.data.moderators || [])
-        if (!productsRes.success || !sellersRes.success || healthRes.version !== '6.0.0') {
+        if (productReportsRes.success) setProductReports(productReportsRes.data.reports || [])
+        if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data.withdrawals || [])
+        if (banksRes.success) setPendingBanks(banksRes.data.sellers || [])
+        if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('7.')) {
           setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
         }
         setLoading(false)
@@ -2993,13 +3233,15 @@ const AdminDashboard = () => {
       if (data.success) { 
         setToast({ message: '✓ Product approved!', type: 'success' })
         setPendingProducts(prev => prev.filter(p => p._id !== productId))
-      }
+      } else setToast({ message: data.message || 'Product failed the approval checklist', type: 'error' })
     } catch { setToast({ message: 'Failed to approve', type: 'error' }) }
   }
 
   const handleRejectProduct = async (productId) => {
+    const reason = window.prompt('Tell the seller exactly what must be corrected:')
+    if (!reason) return
     try {
-      const res = await fetch(`${API_URL}/api/admin/products/${productId}/reject`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      const res = await fetch(`${API_URL}/api/admin/products/${productId}/reject`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ reason }) })
       const data = await res.json()
       if (data.success) { 
         setToast({ message: 'Product rejected', type: 'info' })
@@ -3015,15 +3257,23 @@ const AdminDashboard = () => {
       if (data.success) { 
         setToast({ message: '✓ Seller approved!', type: 'success' })
         setPendingSellers(prev => prev.filter(s => s._id !== sellerId))
-      }
+      } else setToast({ message: data.message || 'Unable to approve seller', type: 'error' })
     } catch { setToast({ message: 'Failed', type: 'error' }) }
   }
 
   const handleProcessRefund = async (orderId, action) => {
+    const report = reports.find(item => item.orderId === orderId)
+    const payload = {}
+    if (action === 'approve-refund') {
+      payload.amountRefunded = Number(window.prompt('Enter the exact amount already refunded to the buyer:', String(report?.amount || '')))
+      payload.refundReference = window.prompt('Enter the Flutterwave refund ID or bank transfer reference:')
+      if (!payload.amountRefunded || !payload.refundReference) return
+    } else payload.note = window.prompt('Reason for rejecting the refund request:') || ''
     try {
       const res = await fetch(`${API_URL}/api/admin/orders/${orderId}/${action}`, { 
         method: 'PUT', 
-        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } 
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
       if (data.success) { 
@@ -3031,6 +3281,15 @@ const AdminDashboard = () => {
         setReports(prev => prev.filter(r => r.orderId !== orderId))
       }
     } catch { setToast({ message: 'Failed to process refund', type: 'error' }) }
+  }
+
+  const handleListingReport = async (report, status, hideProduct = false) => {
+    const note = window.prompt('Moderator note (optional):') || ''
+    try {
+      const data = await fetch(`${API_URL}/api/admin/product-reports/${report._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ status, hideProduct, note }) }).then(r => r.json())
+      if (data.success) setProductReports(current => current.map(item => item._id === report._id ? { ...item, status } : item))
+      else setToast({ message: data.message || 'Unable to update report', type: 'error' })
+    } catch { setToast({ message: 'Unable to update report', type: 'error' }) }
   }
 
   const handleSupportReply = async (ticket) => {
@@ -3081,6 +3340,30 @@ const AdminDashboard = () => {
     } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
+  const verifySellerBank = async seller => {
+    if (!window.confirm(`Confirm that you independently checked ${seller.sellerProfile?.bankAccount?.accountName} / ${seller.sellerProfile?.bankAccount?.accountNumber} at ${seller.sellerProfile?.bankAccount?.bankName}?`)) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/sellers/${seller._id}/verify-bank`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
+      if (data.success) { setPendingBanks(current => current.filter(item => item._id !== seller._id)); setToast({ message: 'Bank account verified', type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to verify account', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to server', type: 'error' }) }
+  }
+
+  const processWithdrawal = async (withdrawal, action) => {
+    const payload = { action }
+    if (action === 'paid') {
+      payload.amountTransferred = Number(window.prompt('Amount actually transferred:', String(withdrawal.amount)))
+      payload.transferReference = window.prompt('Bank transfer reference or session ID:')
+      if (!payload.amountTransferred || !payload.transferReference) return
+      payload.transferDate = new Date().toISOString()
+    } else if (action === 'reject' || action === 'failed') payload.note = window.prompt('Reason:') || ''
+    try {
+      const data = await fetch(`${API_URL}/api/admin/withdrawals/${withdrawal._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify(payload) }).then(r => r.json())
+      if (data.success) { setWithdrawals(current => current.map(item => item._id === withdrawal._id ? data.data.withdrawal : item)); setToast({ message: `Withdrawal ${data.data.withdrawal.status}`, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to update withdrawal', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to server', type: 'error' }) }
+  }
+
   if (!user || !['admin', 'moderator'].includes(user.role)) return null
 
   return (
@@ -3089,7 +3372,7 @@ const AdminDashboard = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6"><h1 className="text-xl sm:text-2xl font-bold text-gray-800">⚙️ {user.role === 'moderator' ? 'Moderator' : 'Admin'} Dashboard</h1><div className="flex items-center gap-2"><button onClick={() => setRefreshKey(key => key + 1)} disabled={loading} className="text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50">↻ Refresh</button><span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Backend v{backendVersion || 'checking'}</span></div></div>
-          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=6`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
+          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=7`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
@@ -3119,7 +3402,10 @@ const AdminDashboard = () => {
               <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📊 Overview</button>
               <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📦 Pending Products ({pendingProducts.length})</button>
               <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
-              <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🚨 Refund Reports ({reports.length})</button>
+              <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🚨 Order Reports ({reports.length})</button>
+              <button onClick={() => setActiveTab('listing-reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'listing-reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>⚑ Listing Reports ({productReports.length})</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
+              {user.role === 'admin' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
               <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💬 Support Chats</button>
               {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
@@ -3137,7 +3423,7 @@ const AdminDashboard = () => {
                   </div>
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2 text-sm sm:text-base">📊 Quick Stats</h3>
-                    <p className="text-xs sm:text-sm text-gray-500">Total Revenue: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p>
+                    <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>Campus Market commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>
                   </div>
                 </div>
               )}
@@ -3216,6 +3502,12 @@ const AdminDashboard = () => {
                 </div>
               )}
 
+              {activeTab === 'listing-reports' && <div><h3 className="font-bold mb-4">Reported listings</h3>{productReports.length ? <div className="space-y-3">{productReports.map(report => <div key={report._id} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><p className="font-bold text-sm">{report.product?.title || 'Removed product'}</p><p className="text-xs text-gray-500">Reporter: {report.reporter?.name} • Seller: {report.seller?.sellerProfile?.storeName || report.seller?.name}</p></div><span className="text-xs font-bold uppercase">{report.category}</span></div><p className="text-sm mt-3 bg-gray-50 p-3 rounded-lg">{report.reason}</p><p className="text-xs text-gray-400 mt-2">Status: {report.status}</p><div className="flex gap-2 mt-3"><button onClick={() => handleListingReport(report, 'reviewed')} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg">Mark reviewed</button><button onClick={() => handleListingReport(report, 'dismissed')} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg">Dismiss</button><button onClick={() => handleListingReport(report, 'actioned', true)} className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg">Hide product</button></div></div>)}</div> : <p className="text-gray-500 text-sm text-center py-8">No listing reports</p>}</div>}
+
+              {activeTab === 'banks' && user.role === 'admin' && <div><div className="mb-4"><h3 className="font-bold">Seller bank-account verification</h3><p className="text-xs text-gray-500 mt-1">Check the account through your bank or Flutterwave before approving. Never rely only on seller-entered text.</p></div>{pendingBanks.length ? <div className="space-y-3">{pendingBanks.map(seller => <div key={seller._id} className="border rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap"><div><p className="font-bold text-sm">{seller.sellerProfile?.storeName || seller.name}</p><p className="text-xs text-gray-500">{seller.email} • {seller.phone}</p><p className="text-sm mt-2">{seller.sellerProfile?.bankAccount?.bankName} • <strong>{seller.sellerProfile?.bankAccount?.accountName}</strong> • {seller.sellerProfile?.bankAccount?.accountNumber}</p></div><button onClick={() => verifySellerBank(seller)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg">I verified this account</button></div>)}</div> : <p className="text-center py-8 text-sm text-gray-500">No bank accounts awaiting verification</p>}</div>}
+
+              {activeTab === 'withdrawals' && user.role === 'admin' && <div><h3 className="font-bold mb-4">Manual seller withdrawals</h3>{withdrawals.length ? <div className="space-y-3">{withdrawals.map(item => <div key={item._id} className="border rounded-xl p-4"><div className="flex justify-between gap-3 flex-wrap"><div><p className="font-bold">₦{item.amount?.toLocaleString()}</p><p className="text-xs text-gray-500">{item.seller?.sellerProfile?.storeName || item.seller?.name} • {item.reference}</p><p className="text-xs mt-2">{item.bankAccount?.bankName} • {item.bankAccount?.accountName} • {item.bankAccount?.accountNumber}</p></div><span className="text-xs font-bold uppercase">{item.status}</span></div><div className="flex flex-wrap gap-2 mt-3">{item.status === 'requested' && <button onClick={() => processWithdrawal(item, 'approve')} className="px-3 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg">Approve</button>}{['requested','approved'].includes(item.status) && <button onClick={() => processWithdrawal(item, 'processing')} className="px-3 py-2 bg-purple-600 text-white text-xs font-bold rounded-lg">Processing</button>}{['approved','processing'].includes(item.status) && <button onClick={() => processWithdrawal(item, 'paid')} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded-lg">Confirm Paid</button>}{!['paid','rejected','failed'].includes(item.status) && <button onClick={() => processWithdrawal(item, 'reject')} className="px-3 py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg">Reject & Restore</button>}</div>{item.transferReference && <p className="text-xs text-green-700 mt-3">Transferred ₦{item.amountTransferred?.toLocaleString()} • Ref {item.transferReference}</p>}</div>)}</div> : <p className="text-gray-500 text-sm text-center py-8">No withdrawal requests</p>}</div>}
+
               {activeTab === 'team' && user.role === 'admin' && (
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">Moderator accounts</h3><p className="text-xs text-gray-500">Moderators can review listings, reports and human-support tickets but cannot create other moderators or approve refunds.</p></div><button onClick={createModerator} className="px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg">+ Add Moderator</button></div>
@@ -3264,7 +3556,7 @@ const AdminDashboard = () => {
 // Profile Page with Store Name separate from Full Name
 const ProfilePage = () => {
   const { user, updateUser } = useAuth()
-  const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '', storeName: '' })
+  const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '', storeName: '', storeDescription: '', returnPolicy: '', pickupAddress: '' })
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
@@ -3279,7 +3571,10 @@ const ProfilePage = () => {
       street: user.address?.street || '', 
       city: user.address?.city || '', 
       state: user.address?.state || '',
-      storeName: user.sellerProfile?.storeName || ''
+      storeName: user.sellerProfile?.storeName || '',
+      storeDescription: user.sellerProfile?.description || '',
+      returnPolicy: user.sellerProfile?.returnPolicy || '',
+      pickupAddress: user.sellerProfile?.pickupAddress || ''
     })
   }, [user, navigate])
 
@@ -3371,9 +3666,8 @@ const ProfilePage = () => {
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
                     <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="09051103883" />
                   </div>
-                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">
-                    {loading ? 'Updating...' : '✓ Update Profile'}
-                  </button>
+                  {user.referralCode && <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg"><p className="text-xs text-purple-700">Your referral code</p><div className="flex items-center justify-between gap-2 mt-1"><strong className="text-purple-900 tracking-wider">{user.referralCode}</strong><button type="button" onClick={() => { navigator.clipboard.writeText(user.referralCode); setToast({ message: 'Referral code copied', type: 'success' }) }} className="text-xs font-bold text-purple-700">Copy</button></div><p className="text-[10px] text-purple-600 mt-1">Rewards activate only after a referred user completes a verified paid order.</p></div>}
+                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Profile'}</button>
                 </form>
               )}
               
@@ -3405,12 +3699,11 @@ const ProfilePage = () => {
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Store Name</label>
                     <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your store/business name" />
                   </div>
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <p className="text-xs text-blue-700">📋 Store name is shown to buyers on your products and store page.</p>
-                  </div>
-                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">
-                    {loading ? 'Updating...' : '✓ Update Store Name'}
-                  </button>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Store Description</label><textarea value={form.storeDescription} onChange={e => setForm({...form, storeDescription: e.target.value})} rows={4} maxLength={1000} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="Tell buyers what your store sells and why they can trust your service." /></div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Store Return Policy</label><textarea value={form.returnPolicy} onChange={e => setForm({...form, returnPolicy: e.target.value})} rows={3} maxLength={1500} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="State truthful return conditions and time limits." /></div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Pickup Information</label><input value={form.pickupAddress} onChange={e => setForm({...form, pickupAddress: e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="Safe public pickup area (do not publish a private home address)" /></div>
+                  <div className="bg-blue-50 p-3 rounded-lg"><p className="text-xs text-blue-700">📋 These details appear on your public, shareable store page. Only publish information you can honour.</p></div>
+                  <div className="flex flex-wrap gap-2"><button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Store'}</button>{user.sellerProfile?.isApproved && <button type="button" onClick={() => navigate(`/stores/${user._id}`)} className="px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-sm">View Public Store</button>}</div>
                 </form>
               )}
               
@@ -3450,7 +3743,7 @@ const InformationPage = ({ type }) => {
       sections: [
         ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
         ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
-        ['Orders and payment', 'Until verified Paystack payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
+        ['Orders and payment', 'Until verified Flutterwave payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
         ['Marketplace role', 'Campus Market connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
         ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
       ]
@@ -3471,7 +3764,7 @@ const InformationPage = ({ type }) => {
         ['Before accepting delivery', 'Check that the item, quantity and visible condition match the listing. For Pay on Delivery, do not pay until you have made a reasonable inspection.'],
         ['Reportable problems', 'Examples include non-delivery, wrong item, counterfeit item, serious undisclosed damage or a product that materially differs from its description.'],
         ['How to report', 'Open My Orders, select Report Issue / Request Refund and describe the problem with clear evidence. Admins can review the order and conversation.'],
-        ['Current payment limitation', 'Automatic online refunds will be added with verified Paystack payments. Until then, a report helps document and mediate the issue but is not a guarantee that the platform can reverse a direct or cash payment.'],
+        ['Current payment limitation', 'Automatic online refunds will be added with verified Flutterwave payments. Until then, a report helps document and mediate the issue but is not a guarantee that the platform can reverse a direct or cash payment.'],
         ['Excluded cases', 'Change-of-mind returns, damage after acceptance and issues clearly disclosed in the listing may depend on the seller’s stated policy.']
       ]
     },
@@ -3576,10 +3869,13 @@ function App() {
                       <Route path="/" element={<HomePage />} />
                       <Route path="/products" element={<ProductsPage />} />
                       <Route path="/products/:id" element={<ProductDetailPage />} />
+                      <Route path="/stores/:sellerId" element={<StorePage />} />
                       <Route path="/cart" element={<CartPage />} />
                       <Route path="/checkout" element={<CheckoutPage />} />
+                      <Route path="/payment/callback" element={<PaymentCallbackPage />} />
                       <Route path="/orders" element={<MyOrdersPage />} />
                       <Route path="/wishlist" element={<WishlistPage />} />
+                      <Route path="/messages" element={<MessagesPage />} />
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
