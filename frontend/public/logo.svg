@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">FlexiaCart</title>
+  <desc id="desc">FlexiaCart flexible shopping cart and letter F mark</desc>
+  <defs>
+    <linearGradient id="g" x1="76" y1="60" x2="434" y2="452" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset=".62" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#4C1D95" flood-opacity=".25"/>
+    </filter>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="132" fill="#0B0A16"/>
+  <circle cx="390" cy="112" r="42" fill="#F59E0B" opacity=".98"/>
+  <path d="m390 83 8 20 21 8-21 8-8 21-8-21-21-8 21-8 8-20Z" fill="#fff"/>
+  <g filter="url(#shadow)">
+    <path d="M100 133h57l34 184h190l31-129H187" fill="none" stroke="url(#g)" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M196 112h135M196 112v154M196 182h111" fill="none" stroke="#fff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M174 345h202" stroke="#A78BFA" stroke-width="24" stroke-linecap="round"/>
+    <circle cx="214" cy="401" r="28" fill="#F59E0B"/>
+    <circle cx="343" cy="401" r="28" fill="#F59E0B"/>
+  </g>
+</svg>
