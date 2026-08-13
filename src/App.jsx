@@ -3192,7 +3192,7 @@ const AdminDashboard = () => {
         if (productReportsRes.success) setProductReports(productReportsRes.data.reports || [])
         if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data.withdrawals || [])
         if (banksRes.success) setPendingBanks(banksRes.data.sellers || [])
-        if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('7.')) {
+        if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('8.')) {
           setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
         }
         setLoading(false)
@@ -3351,7 +3351,7 @@ const AdminDashboard = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6"><h1 className="text-xl sm:text-2xl font-bold text-gray-800">⚙️ {user.role === 'moderator' ? 'Moderator' : 'Admin'} Dashboard</h1><div className="flex items-center gap-2"><button onClick={() => setRefreshKey(key => key + 1)} disabled={loading} className="text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50">↻ Refresh</button><span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Backend v{backendVersion || 'checking'}</span></div></div>
-          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=7`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
+          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=8`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
