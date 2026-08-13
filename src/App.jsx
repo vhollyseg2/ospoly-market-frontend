@@ -15,7 +15,7 @@ const ProductImage = ({ product, index = 0, alt, className = '', fallbackClassNa
   const src = getProductImage(product, index)
   if (!src || failed) {
     return (
-      <div className={`w-full h-full bg-gradient-to-br from-orange-50 via-gray-50 to-orange-100 flex items-center justify-center ${fallbackClassName}`} role="img" aria-label={alt || product?.title || 'Product image unavailable'}>
+      <div className={`w-full h-full bg-gradient-to-br from-purple-50 via-gray-50 to-purple-100 flex items-center justify-center ${fallbackClassName}`} role="img" aria-label={alt || product?.title || 'Product image unavailable'}>
         <div className="text-center text-gray-400">
           <span className="text-4xl sm:text-5xl block">🛍️</span>
           <span className="text-[10px] sm:text-xs mt-2 block">Image coming soon</span>
@@ -34,20 +34,22 @@ const VerificationBadge = ({ level = 'identity_verified' }) => {
     trusted: { label: 'Trusted Seller', icon: '★', className: 'bg-green-100 text-green-700' }
   }
   const item = levels[level] || levels.unverified
-  return <span title="Verification reflects completed Campus Market checks, not a guarantee of every transaction." className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${item.className}`}>{item.icon} {item.label}</span>
+  return <span title="Verification reflects completed FlexiaCart checks, not a guarantee of every transaction." className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${item.className}`}>{item.icon} {item.label}</span>
 }
 
 const colors = {
-  primary: '#FF7300',
-  secondary: '#FF5500',
-  dark: '#333333',
-  gray: '#666666',
-  lightGray: '#999999',
-  border: '#E6E6E6',
-  background: '#F5F5F5',
+  primary: '#7C3AED',
+  secondary: '#6366F1',
+  accent: '#F59E0B',
+  dark: '#0B0A16',
+  surfaceDark: '#141226',
+  gray: '#64748B',
+  lightGray: '#94A3B8',
+  border: '#E2E8F0',
+  background: '#F8FAFC',
   white: '#FFFFFF',
-  green: '#00A700',
-  red: '#FF0000',
+  green: '#10B981',
+  red: '#EF4444',
 }
 
 const MARKET_CATEGORIES = [
@@ -421,14 +423,14 @@ const AnnouncementBar = () => {
   }, [])
   
   return (
-    <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white py-2 px-4 text-center text-sm font-medium">
-      <span className="animate-pulse">🔥</span> {announcements[current]}
+    <div className="bg-[#0B0A16] border-b border-purple-950/50 text-slate-200 py-2 px-4 text-center text-xs sm:text-sm font-medium">
+      <span className="text-amber-400">✦</span> {announcements[current]}
     </div>
   )
 }
 
 // Notification Bell
-const NotificationBell = () => {
+const NotificationBell = ({ dark = false }) => {
   const { notifications, markAsRead, clearAll } = useNotifications()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -436,7 +438,7 @@ const NotificationBell = () => {
   
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative p-2 text-white hover:bg-orange-600 rounded-full transition-colors">
+      <button onClick={() => setOpen(!open)} className={`relative p-2 rounded-xl transition-colors ${dark ? 'text-slate-700 hover:bg-purple-50 hover:text-purple-700' : 'text-white hover:bg-purple-700'}`}>
         <span className="text-xl">🔔</span>
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
@@ -449,7 +451,7 @@ const NotificationBell = () => {
         <div className="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
           <div className="p-4 border-b flex items-center justify-between">
             <h3 className="font-bold text-gray-800">Notifications</h3>
-            <div className="flex gap-2"><button onClick={clearAll} className="text-xs text-orange-600">Mark all read</button><button onClick={() => setOpen(false)} className="text-gray-500">✕</button></div>
+            <div className="flex gap-2"><button onClick={clearAll} className="text-xs text-purple-700">Mark all read</button><button onClick={() => setOpen(false)} className="text-gray-500">✕</button></div>
           </div>
           {notifications.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -459,8 +461,8 @@ const NotificationBell = () => {
           ) : (
             <div className="divide-y">
               {notifications.slice(0, 10).map(n => (
-                <div key={n._id || n.id} className={`p-4 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-orange-50' : ''}`} onClick={() => { markAsRead(n._id || n.id); if (n.link) { setOpen(false); navigate(n.link) } }}>
-                  {n.title && <p className="text-xs font-bold text-orange-600 mb-1">{n.title}</p>}
+                <div key={n._id || n.id} className={`p-4 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-purple-50' : ''}`} onClick={() => { markAsRead(n._id || n.id); if (n.link) { setOpen(false); navigate(n.link) } }}>
+                  {n.title && <p className="text-xs font-bold text-purple-700 mb-1">{n.title}</p>}
                   <p className="text-sm font-medium text-gray-800">{n.message}</p>
                   <p className="text-xs text-gray-500 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
                 </div>
@@ -632,14 +634,14 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1 block">Review Title *</label>
             <input value={title} onChange={e => setTitle(e.target.value)} 
-              className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" 
+              className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" 
               placeholder="Summarize your experience" required />
           </div>
           
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1 block">Your Review *</label>
             <textarea value={comment} onChange={e => setComment(e.target.value)} 
-              className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" 
+              className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" 
               rows={4} placeholder="Share your detailed experience..." required />
           </div>
           
@@ -649,7 +651,7 @@ const ReviewModal = ({ isOpen, onClose, productId, onSubmit }) => {
           </div>
           
           <button type="submit" disabled={loading} 
-            className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50">
+            className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50">
             {loading ? 'Submitting...' : 'Submit Review'}
           </button>
         </form>
@@ -700,9 +702,9 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess 
         <h2 id="order-confirmation-title" className="text-2xl font-bold text-gray-900 text-center">Order placed successfully</h2>
         <p className="text-sm text-gray-500 text-center mt-2">Order #{orderId?.slice(-8).toUpperCase()}</p>
 
-        <div className="my-5 rounded-xl bg-orange-50 border border-orange-200 p-4">
-          <p className="text-sm font-bold text-orange-900">Temporary payment method: Pay on Delivery</p>
-          <p className="text-xs text-orange-800 mt-2 leading-relaxed">
+        <div className="my-5 rounded-xl bg-purple-50 border border-purple-200 p-4">
+          <p className="text-sm font-bold text-purple-950">Temporary payment method: Pay on Delivery</p>
+          <p className="text-xs text-purple-900 mt-2 leading-relaxed">
             Online card, USSD and bank-transfer payments are not active yet. Do not transfer money to any account shown outside the official Flutterwave checkout. Confirm the item and seller before paying on delivery.
           </p>
         </div>
@@ -719,7 +721,7 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess 
 
         <div className="grid grid-cols-2 gap-3 mt-6">
           <button onClick={onClose} className="py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200">Continue shopping</button>
-          <button onClick={() => { onSuccess?.(); onClose() }} className="py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600">View my orders</button>
+          <button onClick={() => { onSuccess?.(); onClose() }} className="py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700">View my orders</button>
         </div>
       </div>
     </div>
@@ -772,7 +774,7 @@ const SupportChat = () => {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
-    { id: 'welcome', from: 'ai', text: 'Hi! I’m the Campus Market AI Assistant. I can help with orders, selling, delivery, payments and safety. If I cannot solve it, tap “Talk to a person” and I’ll send the conversation to an admin or moderator.', time: new Date() }
+    { id: 'welcome', from: 'ai', text: 'Hi! I’m the FlexiaCart AI Assistant. I can help with orders, selling, delivery, payments and safety. If I cannot solve it, tap “Talk to a person” and I’ll send the conversation to an admin or moderator.', time: new Date() }
   ])
   const [newMessage, setNewMessage] = useState('')
   const [typing, setTyping] = useState(false)
@@ -786,8 +788,8 @@ const SupportChat = () => {
     const text = message.toLowerCase()
     if (text.includes('track') || text.includes('where is my order')) return 'Open My Orders from your profile menu. The tracker shows Pending → Confirmed → Processing → Shipped → Delivered. If the status has not changed for too long, I can send the order issue to a person.'
     if (text.includes('refund') || text.includes('return') || text.includes('wrong item') || text.includes('damage')) return 'Open My Orders and choose “Report Issue / Request Refund.” Add a clear explanation and keep photos or delivery evidence. Automatic online refunds are not active during Pay on Delivery, but an admin can review and mediate the report.'
-    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'Campus Market currently uses Pay on Delivery while verified Flutterwave payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
-    if (text.includes('sell') || text.includes('seller') || text.includes('product')) return 'Create a seller account, choose a separate store name and wait for approval. After approval, open Seller Dashboard from your profile menu and upload 1–6 clear product images, delivery prices and an accurate description.'
+    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'FlexiaCart currently uses Pay on Delivery while verified Flutterwave payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
+    if (text.includes('sell') || text.includes('seller') || text.includes('product')) return 'Create one normal account first, then choose Become a Seller from the account menu. Submit your store details and wait for approval. After approval, open Seller Dashboard and upload 1–6 clear product images, delivery prices and an accurate description.'
     if (text.includes('delivery') || text.includes('shipping') || text.includes('state')) return 'Each seller enters a local delivery price and a nationwide price. Your final estimate depends on the seller location and your delivery state. For interstate orders, ask for tracked delivery.'
     if (text.includes('scam') || text.includes('fraud') || text.includes('report') || text.includes('threat')) return 'Do not pay or share private codes. Save evidence, report the order, and tap “Talk to a person” below so an admin or moderator can investigate the full conversation.'
     if (text.includes('hello') || text.includes('hi') || text.includes('help')) return 'Hello! Choose a quick topic below or describe what happened. I’ll try to solve it first, and a human support option is always available.'
@@ -869,27 +871,27 @@ const SupportChat = () => {
   }, [open, ticket?._id, user?._id])
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60]">
+    <div className="fixed bottom-20 md:bottom-4 right-4 z-[60]">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       {open && <div className="bg-white rounded-2xl shadow-2xl w-[min(24rem,calc(100vw-2rem))] mb-3 border border-gray-200 overflow-hidden animate-slide-up">
         <div className="bg-gradient-to-r from-gray-950 to-gray-800 text-white p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3"><span className={`w-11 h-11 rounded-full flex items-center justify-center text-2xl ${ticket ? 'bg-green-500' : 'bg-orange-500'}`}>{ticket ? '👩🏽‍💻' : '🤖'}</span><div><p className="font-bold">{ticket ? 'Human Support' : 'AI Support Assistant'}</p><p className="text-xs text-gray-300">{ticket ? `Ticket #${ticket._id.slice(-6).toUpperCase()} • ${ticket.status}` : 'Instant help • human backup available'}</p></div></div>
+          <div className="flex items-center gap-3"><span className={`w-11 h-11 rounded-full flex items-center justify-center text-2xl ${ticket ? 'bg-green-500' : 'bg-purple-600'}`}>{ticket ? '👩🏽‍💻' : '🤖'}</span><div><p className="font-bold">{ticket ? 'Human Support' : 'AI Support Assistant'}</p><p className="text-xs text-gray-300">{ticket ? `Ticket #${ticket._id.slice(-6).toUpperCase()} • ${ticket.status}` : 'Instant help • human backup available'}</p></div></div>
           <button onClick={() => setOpen(false)} className="text-white text-xl" aria-label="Close support">✕</button>
         </div>
 
         <div className="h-72 overflow-y-auto p-4 space-y-3 bg-gray-50" aria-live="polite">
-          {messages.map(message => <div key={message.id} className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[86%] p-3 rounded-2xl text-sm shadow-sm ${message.from === 'user' ? 'bg-orange-500 text-white rounded-br-sm' : message.from === 'human' ? 'bg-green-600 text-white rounded-bl-sm' : message.from === 'system' ? 'bg-blue-50 border border-blue-200 text-blue-800 mx-auto text-xs' : 'bg-white border text-gray-800 rounded-bl-sm'}`}>{message.text}</div></div>)}
+          {messages.map(message => <div key={message.id} className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[86%] p-3 rounded-2xl text-sm shadow-sm ${message.from === 'user' ? 'bg-purple-600 text-white rounded-br-sm' : message.from === 'human' ? 'bg-green-600 text-white rounded-bl-sm' : message.from === 'system' ? 'bg-blue-50 border border-blue-200 text-blue-800 mx-auto text-xs' : 'bg-white border text-gray-800 rounded-bl-sm'}`}>{message.text}</div></div>)}
           {typing && <div className="inline-flex gap-1 bg-white border rounded-2xl px-4 py-3"><span className="animate-pulse">●</span><span className="animate-pulse">●</span><span className="animate-pulse">●</span></div>}
         </div>
 
         <div className="p-3 border-t bg-white">
-          {!ticket && <div className="flex flex-wrap gap-1.5 mb-3">{quickReplies.map(reply => <button key={reply} onClick={() => handleSend(reply)} className="text-xs px-2.5 py-1.5 bg-gray-100 hover:bg-orange-50 hover:text-orange-700 rounded-full">{reply}</button>)}</div>}
+          {!ticket && <div className="flex flex-wrap gap-1.5 mb-3">{quickReplies.map(reply => <button key={reply} onClick={() => handleSend(reply)} className="text-xs px-2.5 py-1.5 bg-gray-100 hover:bg-purple-50 hover:text-purple-800 rounded-full">{reply}</button>)}</div>}
           {!ticket && <button onClick={escalateToHuman} disabled={escalating} className="w-full mb-3 py-2.5 border border-green-300 bg-green-50 text-green-800 font-bold rounded-xl text-sm hover:bg-green-100 disabled:opacity-50">{escalating ? 'Sending conversation...' : '👩🏽‍💻 Talk to a person'}</button>}
-          <div className="flex gap-2"><input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={ticket ? 'Message human support...' : 'Ask the AI assistant...'} className="min-w-0 flex-1 px-4 py-2.5 border rounded-full text-sm outline-none focus:border-orange-500" /><button onClick={() => handleSend()} className="w-11 h-11 bg-orange-500 text-white rounded-full hover:bg-orange-600" aria-label="Send message">➤</button></div>
+          <div className="flex gap-2"><input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={ticket ? 'Message human support...' : 'Ask the AI assistant...'} className="min-w-0 flex-1 px-4 py-2.5 border rounded-full text-sm outline-none focus:border-purple-600" /><button onClick={() => handleSend()} className="w-11 h-11 bg-purple-600 text-white rounded-full hover:bg-purple-700" aria-label="Send message">➤</button></div>
           <p className="text-[10px] text-gray-400 text-center mt-2">Never share passwords, OTPs, PINs or CVVs in support chat.</p>
         </div>
       </div>}
-      <button onClick={() => setOpen(!open)} className="relative w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105" aria-label="Open support chat">{open ? '✕' : ticket ? '👩🏽‍💻' : '🤖'}{!open && <span className="absolute -top-1 -right-1 bg-green-500 border-2 border-white w-5 h-5 rounded-full" />}</button>
+      <button onClick={() => setOpen(!open)} className="relative w-16 h-16 bg-gradient-to-r from-purple-700 to-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105" aria-label="Open support chat">{open ? '✕' : ticket ? '👩🏽‍💻' : '🤖'}{!open && <span className="absolute -top-1 -right-1 bg-green-500 border-2 border-white w-5 h-5 rounded-full" />}</button>
     </div>
   )
 }
@@ -941,15 +943,15 @@ const MessagesPage = () => {
             {(chats || []).length ? chats.map(chat => {
               const person = chat.participants?.find(item => String(item._id) !== String(user._id))
               const last = chat.messages?.[chat.messages.length - 1]
-              return <button key={chat._id} onClick={() => setActiveId(chat._id)} className={`w-full p-4 text-left border-b hover:bg-white ${activeId === chat._id ? 'bg-orange-50 border-l-4 border-l-orange-500' : ''}`}><div className="flex gap-3"><div className="w-10 h-10 flex-shrink-0 bg-orange-100 text-orange-700 rounded-full flex items-center justify-center font-bold">{(person?.sellerProfile?.storeName || person?.name || 'U').charAt(0)}</div><div className="min-w-0"><p className="font-bold text-sm truncate">{person?.sellerProfile?.storeName || person?.name || 'Marketplace user'}</p><p className="text-xs text-gray-500 truncate">{chat.product?.title || 'Product conversation'}</p><p className="text-xs text-gray-400 truncate mt-1">{last?.message || 'No message'}</p></div></div></button>
-            }) : <div className="p-8 text-center text-gray-500"><span className="text-4xl block">💬</span><p className="font-bold mt-3">No conversations yet</p><p className="text-xs mt-1">Open a product and choose Chat with Seller.</p><button onClick={() => navigate('/products')} className="mt-4 text-orange-600 font-bold text-sm">Browse products</button></div>}
+              return <button key={chat._id} onClick={() => setActiveId(chat._id)} className={`w-full p-4 text-left border-b hover:bg-white ${activeId === chat._id ? 'bg-purple-50 border-l-4 border-l-purple-600' : ''}`}><div className="flex gap-3"><div className="w-10 h-10 flex-shrink-0 bg-purple-100 text-purple-800 rounded-full flex items-center justify-center font-bold">{(person?.sellerProfile?.storeName || person?.name || 'U').charAt(0)}</div><div className="min-w-0"><p className="font-bold text-sm truncate">{person?.sellerProfile?.storeName || person?.name || 'Marketplace user'}</p><p className="text-xs text-gray-500 truncate">{chat.product?.title || 'Product conversation'}</p><p className="text-xs text-gray-400 truncate mt-1">{last?.message || 'No message'}</p></div></div></button>
+            }) : <div className="p-8 text-center text-gray-500"><span className="text-4xl block">💬</span><p className="font-bold mt-3">No conversations yet</p><p className="text-xs mt-1">Open a product and choose Chat with Seller.</p><button onClick={() => navigate('/products')} className="mt-4 text-purple-700 font-bold text-sm">Browse products</button></div>}
           </aside>
 
           <section className="flex flex-col min-w-0">
             {activeChat ? <>
-              <div className="p-4 border-b flex items-center justify-between gap-3"><div className="min-w-0"><p className="font-bold text-gray-900 truncate">{otherPerson?.sellerProfile?.storeName || otherPerson?.name}</p><button onClick={() => activeChat.product?._id && navigate(`/products/${activeChat.product._id}`)} className="text-xs text-orange-600 truncate max-w-full">Re: {activeChat.product?.title || 'Product'} →</button></div><span className="text-xs text-green-600">● Conversation open</span></div>
-              <div className="flex-1 p-4 sm:p-6 space-y-3 overflow-y-auto bg-gray-50 max-h-[450px]">{(activeChat.messages || []).map((item, index) => { const mine = String(item.sender?._id || item.sender) === String(user._id); return <div key={item._id || index} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] p-3 rounded-2xl text-sm ${mine ? 'bg-orange-500 text-white rounded-br-sm' : 'bg-white border text-gray-800 rounded-bl-sm'}`}><p>{item.message}</p><p className={`text-[10px] mt-1 ${mine ? 'text-orange-100' : 'text-gray-400'}`}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}</p></div></div>})}</div>
-              <div className="p-4 border-t"><div className="flex gap-2"><textarea value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleReply() }} rows={2} maxLength={2000} placeholder="Type your reply..." className="min-w-0 flex-1 border rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500" /><button onClick={handleReply} disabled={sending || !message.trim()} className="px-5 bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50">{sending ? '...' : 'Send'}</button></div><p className="text-[10px] text-gray-400 mt-2">Keep discussions respectful. Never send passwords, OTPs or card PINs.</p></div>
+              <div className="p-4 border-b flex items-center justify-between gap-3"><div className="min-w-0"><p className="font-bold text-gray-900 truncate">{otherPerson?.sellerProfile?.storeName || otherPerson?.name}</p><button onClick={() => activeChat.product?._id && navigate(`/products/${activeChat.product._id}`)} className="text-xs text-purple-700 truncate max-w-full">Re: {activeChat.product?.title || 'Product'} →</button></div><span className="text-xs text-green-600">● Conversation open</span></div>
+              <div className="flex-1 p-4 sm:p-6 space-y-3 overflow-y-auto bg-gray-50 max-h-[450px]">{(activeChat.messages || []).map((item, index) => { const mine = String(item.sender?._id || item.sender) === String(user._id); return <div key={item._id || index} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] p-3 rounded-2xl text-sm ${mine ? 'bg-purple-600 text-white rounded-br-sm' : 'bg-white border text-gray-800 rounded-bl-sm'}`}><p>{item.message}</p><p className={`text-[10px] mt-1 ${mine ? 'text-purple-100' : 'text-gray-400'}`}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}</p></div></div>})}</div>
+              <div className="p-4 border-t"><div className="flex gap-2"><textarea value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleReply() }} rows={2} maxLength={2000} placeholder="Type your reply..." className="min-w-0 flex-1 border rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-600" /><button onClick={handleReply} disabled={sending || !message.trim()} className="px-5 bg-purple-600 text-white font-bold rounded-xl disabled:opacity-50">{sending ? '...' : 'Send'}</button></div><p className="text-[10px] text-gray-400 mt-2">Keep discussions respectful. Never send passwords, OTPs or card PINs.</p></div>
             </> : <div className="flex-1 flex items-center justify-center text-center text-gray-400 p-8"><div><span className="text-5xl">💬</span><p className="mt-3">Select a conversation</p></div></div>}
           </section>
         </div>
@@ -1019,7 +1021,7 @@ const ProductChat = ({ sellerId, productTitle, productId }) => {
   )
 }
 
-// Header with discoverable categories and a role-aware profile dropdown
+// Professional header: account navigation lives in one left drawer; categories stay separate.
 const Header = () => {
   const { user, logout, isAuthenticated } = useAuth()
   const { summary } = useCart()
@@ -1028,115 +1030,81 @@ const Header = () => {
   const location = useLocation()
   const [searchQuery, setSearchQuery] = useState('')
   const [toast, setToast] = useState(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
-
+  const [searchCategory, setSearchCategory] = useState('')
+  const [searchSuggestions, setSearchSuggestions] = useState([])
+  const [searchOpen, setSearchOpen] = useState(false)
   const currentCategory = new URLSearchParams(location.search).get('category') || ''
 
+  useEffect(() => { setDrawerOpen(false); setCategoriesOpen(false); setSearchOpen(false) }, [location.pathname, location.search])
   useEffect(() => {
-    setProfileMenuOpen(false)
-    setCategoriesOpen(false)
-    setMobileMenuOpen(false)
-  }, [location.pathname, location.search])
+    if (searchQuery.trim().length < 2) { setSearchSuggestions([]); return }
+    const timer = setTimeout(() => {
+      const category = searchCategory ? `&category=${encodeURIComponent(searchCategory)}` : ''
+      fetch(`${API_URL}/api/products?search=${encodeURIComponent(searchQuery.trim())}${category}&limit=5`).then(r => r.json()).then(data => { if (data.success) { setSearchSuggestions(data.data.products || []); setSearchOpen(true) } }).catch(() => {})
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery, searchCategory])
+  const go = path => { setDrawerOpen(false); navigate(path) }
+  const handleSearch = e => { e.preventDefault(); const category = searchCategory ? `&category=${encodeURIComponent(searchCategory)}` : ''; navigate(searchQuery.trim() ? `/products?search=${encodeURIComponent(searchQuery.trim())}${category}` : searchCategory ? `/products?category=${searchCategory}` : '/products') }
+  const handleLogout = () => { setDrawerOpen(false); logout(); setToast({ message: 'Logged out successfully', type: 'success' }) }
 
-  const handleSearch = (e) => {
-    e.preventDefault()
-    navigate(searchQuery.trim() ? `/products?search=${encodeURIComponent(searchQuery.trim())}` : '/products')
-  }
+  return <>
+    {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+    <AnnouncementBar />
 
-  const handleLogout = () => {
-    setProfileMenuOpen(false)
-    logout()
-    setToast({ message: 'Logged out successfully', type: 'success' })
-  }
-
-  const go = path => { setProfileMenuOpen(false); navigate(path) }
-
-  const accountDropdown = profileMenuOpen && isAuthenticated && (
-    <>
-      <button aria-label="Close account menu" onClick={() => setProfileMenuOpen(false)} className="fixed inset-0 z-[70] bg-black/10" />
-      <div className="fixed z-[80] right-3 sm:right-6 top-28 sm:top-32 w-[min(22rem,calc(100vw-1.5rem))] max-h-[calc(100vh-8rem)] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200 animate-fade-in">
-        <div className="p-4 bg-gradient-to-r from-orange-500 to-red-500 text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white text-orange-600 rounded-full flex items-center justify-center text-xl font-black">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</div>
-            <div className="min-w-0"><p className="font-bold truncate">{user?.name}</p><p className="text-xs text-orange-100 truncate">{user?.email}</p><span className="inline-block text-[10px] uppercase tracking-wide bg-white/20 px-2 py-0.5 rounded-full mt-1">{user?.role}</span></div>
-          </div>
-        </div>
-        <div className="p-2">
-          <button onClick={() => go('/profile')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">👤</span><span><strong className="block">My Profile</strong><span className="text-xs text-gray-500">Personal information and security</span></span></button>
-          <button onClick={() => go('/orders')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">📦</span><span><strong className="block">My Orders</strong><span className="text-xs text-gray-500">Track purchases and report issues</span></span></button>
-          <button onClick={() => go('/wishlist')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-left text-sm"><span className="text-xl">❤️</span><span><strong className="block">Wishlist</strong><span className="text-xs text-gray-500">{wishlist.length} saved product(s)</span></span></button>
-          <button onClick={() => go('/messages')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 text-left text-sm"><span className="text-xl">💬</span><span><strong className="block">Messages</strong><span className="text-xs text-gray-500">Chat with buyers and sellers</span></span></button>
-          {(user?.role === 'seller' || user?.role === 'admin') && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-orange-50 text-left text-sm text-orange-800"><span className="text-xl">🏪</span><span><strong className="block">Seller Dashboard</strong><span className="text-xs text-orange-600">Products, images, orders and wallet</span></span></button>}
-          {(user?.role === 'admin' || user?.role === 'moderator') && <button onClick={() => go('/admin')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-purple-50 text-left text-sm text-purple-800"><span className="text-xl">🛡️</span><span><strong className="block">{user.role === 'admin' ? 'Admin Dashboard' : 'Moderator Dashboard'}</strong><span className="text-xs text-purple-600">Approvals, reports and human support</span></span></button>}
-          <div className="border-t my-2" />
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-left text-sm text-red-600"><span className="text-xl">↪</span><strong>Sign Out</strong></button>
-        </div>
-      </div>
-    </>
-  )
-
-  return (
-    <>
-      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      {accountDropdown}
-      <AnnouncementBar />
-      <header className="bg-white shadow-sm sticky top-0 z-40 relative">
-        <div className="hidden md:block bg-gray-900 text-white">
-          <div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto text-xs">
-            <div className="flex items-center gap-4"><span>📞 09051103883</span><span>🚚 Local and nationwide delivery</span><span>🛡️ Reviewed listings and support</span></div>
-            <div>{isAuthenticated ? <span>Welcome, {user?.name}</span> : <div className="flex gap-4"><Link to="/login">Sign In</Link><Link to="/register">Join Free</Link></div>}</div>
-          </div>
+    {drawerOpen && <>
+      <button aria-label="Close navigation" onClick={() => setDrawerOpen(false)} className="fixed inset-0 z-[70] bg-black/45" />
+      <aside className="fixed z-[80] left-0 top-0 bottom-0 w-[min(22rem,88vw)] bg-white shadow-2xl overflow-y-auto animate-fade-in">
+        <div className="bg-gradient-to-br from-purple-700 to-indigo-600 text-white p-5">
+          <div className="flex justify-between items-start"><div className="flex items-center gap-3"><span className="w-12 h-12 bg-white rounded-xl p-1.5"><img src="/logo.svg" alt="FlexiaCart" className="w-full h-full" /></span><div><p className="font-black text-lg">FlexiaCart</p><p className="text-xs text-purple-100">Your marketplace account</p></div></div><button onClick={() => setDrawerOpen(false)} className="text-2xl">✕</button></div>
+          {isAuthenticated ? <div className="flex items-center gap-3 mt-5 bg-white/10 rounded-xl p-3"><span className="w-11 h-11 rounded-full bg-white text-purple-700 flex items-center justify-center font-black">{user?.name?.charAt(0)?.toUpperCase()}</span><div className="min-w-0"><p className="font-bold truncate">{user?.name}</p><p className="text-xs text-purple-100 truncate">{user?.email}</p><span className="text-[10px] uppercase bg-white/20 rounded-full px-2 py-0.5">{user?.role}</span></div></div> : <div className="grid grid-cols-2 gap-2 mt-5"><button onClick={() => go('/login')} className="py-2.5 bg-white text-purple-800 font-bold rounded-lg">Sign In</button><button onClick={() => go('/register')} className="py-2.5 border border-white/50 font-bold rounded-lg">Create Account</button></div>}
         </div>
 
-        <div className="bg-orange-500">
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2 sm:gap-4">
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white text-2xl w-9" aria-label="Open menu">{mobileMenuOpen ? '✕' : '☰'}</button>
-            <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-              <span className="bg-white rounded-xl w-11 h-11 sm:w-12 sm:h-12 p-1.5 shadow flex items-center justify-center"><img src="/logo.svg" alt="Campus Market" className="w-full h-full object-contain" /></span>
-              <span className="hidden sm:block text-white leading-tight"><strong className="text-lg block">Campus</strong><span className="text-xs text-orange-100">Market</span></span>
-            </Link>
+        <nav className="p-3">
+          {isAuthenticated && <>
+            <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">My account</p>
+            <button onClick={() => go('/profile')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 text-left"><span className="text-xl">👤</span><span><strong className="block text-sm">My Profile</strong><small className="text-gray-500">Personal details and security</small></span></button>
+            <button onClick={() => go('/orders')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 text-left"><span className="text-xl">📦</span><span><strong className="block text-sm">My Orders</strong><small className="text-gray-500">Track purchases and disputes</small></span></button>
+            <button onClick={() => go('/messages')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-blue-50 text-left"><span className="text-xl">💬</span><span><strong className="block text-sm">Messages</strong><small className="text-gray-500">Buyer and seller conversations</small></span></button>
+            <button onClick={() => go('/wishlist')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 text-left"><span className="text-xl">❤️</span><span><strong className="block text-sm">Wishlist</strong><small className="text-gray-500">{wishlist.length} saved item(s)</small></span></button>
 
-            <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
-              <div className="flex bg-white rounded-xl overflow-hidden shadow-sm">
-                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search products, stores, brands..." className="min-w-0 flex-1 px-3 sm:px-4 py-3 text-sm outline-none" />
-                <button className="px-4 sm:px-6 bg-red-600 hover:bg-red-700 text-white font-bold" aria-label="Search">🔍</button>
-              </div>
-            </form>
+            <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Selling</p>
+            {user?.role === 'buyer' && <button onClick={() => go('/become-seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-purple-50 text-purple-900 text-left"><span className="text-xl">🚀</span><span><strong className="block text-sm">Become a Seller</strong><small className="text-purple-700">Open your FlexiaCart store</small></span></button>}
+            {(user?.role === 'seller' || user?.role === 'admin') && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-900 text-left"><span className="text-xl">🏪</span><span><strong className="block text-sm">Seller Dashboard</strong><small className="text-purple-700">Products, orders and wallet</small></span></button>}
+            {(user?.role === 'admin' || user?.role === 'moderator') && <button onClick={() => go('/admin')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-800 text-left"><span className="text-xl">🛡️</span><span><strong className="block text-sm">{user.role === 'admin' ? 'Admin Dashboard' : 'Moderator Dashboard'}</strong><small className="text-purple-600">Approvals, reports and support</small></span></button>}
+          </>}
 
-            <div className="flex items-center gap-1 sm:gap-3">
-              <Link to="/wishlist" className="hidden sm:flex relative w-10 h-10 items-center justify-center text-white text-xl" aria-label="Wishlist">❤️{wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{wishlist.length}</span>}</Link>
-              <Link to="/cart" className="relative w-10 h-10 flex items-center justify-center text-white text-xl" aria-label="Cart">🛒{summary.itemCount > 0 && <span className="absolute -top-1 -right-1 bg-red-700 text-[10px] w-5 h-5 rounded-full flex items-center justify-center">{summary.itemCount}</span>}</Link>
-              {isAuthenticated && <NotificationBell />}
-              {isAuthenticated ? <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} className="w-10 h-10 bg-white rounded-full text-orange-600 font-black shadow flex items-center justify-center" aria-label="Open account menu">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</button> : <Link to="/login" className="hidden sm:block px-4 py-2 bg-white text-orange-600 font-bold rounded-lg text-sm">Sign In</Link>}
-            </div>
-          </div>
-        </div>
-
-        <nav className="border-b border-gray-200 bg-white">
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center gap-1 overflow-x-auto min-w-0">
-            <button onClick={() => setCategoriesOpen(!categoriesOpen)} className={`px-3 sm:px-4 py-3 text-xs sm:text-sm font-bold whitespace-nowrap ${categoriesOpen ? 'bg-orange-50 text-orange-700' : 'text-gray-800 hover:text-orange-600'}`}>☰ All Categories</button>
-            <Link to="/products" className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${!currentCategory ? 'text-orange-600 border-orange-600' : 'text-gray-600 border-transparent'}`}>All Products</Link>
-            {MARKET_CATEGORIES.slice(0, 6).map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === category.slug ? 'text-orange-600 border-orange-600' : 'text-gray-600 border-transparent hover:text-orange-600'}`}>{category.icon} {category.short}</button>)}
-            <button onClick={() => navigate('/products?flash=true')} className="px-3 py-3 text-xs sm:text-sm font-bold whitespace-nowrap text-red-600">⚡ Deals</button>
-          </div>
+          <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Help & information</p>
+          <button onClick={() => go('/about')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">About FlexiaCart</button>
+          <button onClick={() => go('/faq')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Frequently Asked Questions</button>
+          <button onClick={() => go('/contact')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Contact & Support</button>
+          <button onClick={() => go('/safety')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Marketplace Safety</button>
+          <button onClick={() => go('/prohibited-items')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Prohibited Products</button>
+          <button onClick={() => go('/seller-terms')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Seller Terms</button>
+          <button onClick={() => go('/returns')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Returns & Disputes</button>
+          <button onClick={() => go('/privacy')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Privacy</button>
+          <button onClick={() => go('/terms')} className="w-full px-3 py-2.5 text-left text-sm rounded-lg hover:bg-gray-50">Terms</button>
+          {isAuthenticated && <><div className="border-t my-3" /><button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-red-50 text-red-600 text-left"><span>↪</span><strong className="text-sm">Sign Out</strong></button></>}
         </nav>
+      </aside>
+    </>}
 
-        {categoriesOpen && <div className="absolute left-0 right-0 top-full bg-white border-t shadow-2xl z-50">
-          <div className="max-w-7xl mx-auto p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4"><div><h2 className="font-black text-gray-900">Explore all categories</h2><p className="text-xs text-gray-500">Find products even when you are not sure what to search for</p></div><button onClick={() => setCategoriesOpen(false)} className="text-gray-500 text-xl">✕</button></div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">{MARKET_CATEGORIES.map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="p-3 sm:p-4 rounded-xl border border-gray-200 hover:border-orange-400 hover:bg-orange-50 text-left flex gap-3"><span className="text-2xl">{category.icon}</span><span><strong className="text-sm block text-gray-900">{category.name}</strong><span className="text-[11px] text-gray-500 line-clamp-2">{category.description}</span></span></button>)}</div>
-          </div>
-        </div>}
+    <header className="bg-white shadow-sm sticky top-0 z-40 relative">
+      <div className="hidden md:block bg-[#0B0A16] text-slate-300"><div className="px-4 py-2 flex justify-between items-center max-w-7xl mx-auto text-xs"><div className="flex items-center gap-4"><span>📞 09051103883</span><span>🚚 Local and nationwide delivery</span><span>🛡️ Reviewed listings and support</span></div><span className="text-amber-400 font-bold">{isAuthenticated ? `Welcome, ${user?.name}` : 'Shop More. Sell Smarter.'}</span></div></div>
+      <div className="bg-white border-b border-slate-200"><div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 flex items-center gap-2 sm:gap-4">
+        <button onClick={() => setDrawerOpen(true)} className="text-slate-700 hover:text-purple-700 text-2xl w-9 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100" aria-label="Open account menu">☰</button>
+        <Link to="/" className="flex items-center gap-2 flex-shrink-0"><span className="w-10 h-10 sm:w-12 sm:h-12"><img src="/logo.svg" alt="FlexiaCart" className="w-full h-full" /></span><span className="hidden lg:block leading-tight"><strong className="text-xl text-slate-950">Flexia<span className="text-purple-700">Cart</span><span className="text-amber-500">.</span></strong><small className="block text-[9px] uppercase tracking-wider text-slate-400">Shop More. Sell Smarter.</small></span></Link>
+        <form onSubmit={handleSearch} className="flex-1 max-w-2xl relative"><div className="flex bg-slate-100 rounded-2xl overflow-hidden border-2 border-purple-200 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-100"><select value={searchCategory} onChange={e => setSearchCategory(e.target.value)} className="hidden md:block max-w-32 bg-slate-200 border-r border-slate-300 px-2 text-xs font-bold text-slate-700 outline-none"><option value="">All</option>{MARKET_CATEGORIES.map(category => <option key={category.slug} value={category.slug}>{category.short}</option>)}</select><input value={searchQuery} onFocus={() => searchQuery.length >= 2 && setSearchOpen(true)} onChange={e => setSearchQuery(e.target.value)} placeholder="Search products, brands and stores..." className="min-w-0 flex-1 px-3 sm:px-4 py-3 text-sm outline-none bg-transparent" /><button className="px-3 sm:px-6 bg-gradient-to-r from-purple-700 to-indigo-600 text-white" aria-label="Search">🔍</button></div>{searchOpen && searchQuery.trim().length >= 2 && <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-[70]">{searchSuggestions.length ? searchSuggestions.map(product => <button type="button" key={product._id} onClick={() => navigate(`/products/${product._id}`)} className="w-full flex items-center gap-3 p-3 border-b last:border-0 hover:bg-purple-50 text-left"><div className="w-11 h-11 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0"><ProductImage product={product} alt={product.title} /></div><div className="min-w-0 flex-1"><p className="text-xs font-bold text-slate-900 truncate">{product.title}</p><p className="text-[10px] text-slate-500 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name} • {product.location || 'Nigeria'}</p></div><strong className="text-xs">₦{product.price?.toLocaleString()}</strong></button>) : <div className="p-5 text-center text-xs text-slate-500">No approved products found.</div>}<button type="submit" className="w-full p-3 bg-slate-50 text-purple-700 text-xs font-bold">View all search results →</button></div>}</form>
+        <div className="flex items-center gap-0.5 sm:gap-2"><Link to="/wishlist" className="hidden sm:flex w-10 h-10 items-center justify-center text-slate-600 hover:text-rose-600 text-xl">♡</Link><Link to="/cart" className="relative w-10 h-10 flex items-center justify-center text-purple-700 text-xl rounded-xl hover:bg-purple-50" aria-label="Cart">🛍️{summary.itemCount > 0 && <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{summary.itemCount}</span>}</Link>{isAuthenticated ? <><NotificationBell dark /><button onClick={() => go('/profile')} className="w-9 h-9 bg-purple-100 border border-purple-300 rounded-xl text-purple-800 font-black" aria-label="Profile">{user?.name?.charAt(0)?.toUpperCase()}</button></> : <Link to="/login" className="ml-1 px-2.5 sm:px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 text-white font-bold rounded-xl text-xs sm:text-sm whitespace-nowrap shadow-md">Log In</Link>}</div>
+      </div></div>
 
-        {mobileMenuOpen && <div className="md:hidden bg-white border-t p-4 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-2 mb-3">{MARKET_CATEGORIES.map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="p-3 bg-gray-50 rounded-lg text-left text-xs">{category.icon} {category.name}</button>)}</div>
-          <div className="border-t pt-3 flex gap-3 text-sm"><Link to="/about">About</Link><Link to="/safety">Safety</Link><Link to="/returns">Returns</Link></div>
-        </div>}
-      </header>
-    </>
-  )
+      <nav className="border-b border-gray-200 bg-white"><div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center gap-1 overflow-x-auto"><button onClick={() => setCategoriesOpen(!categoriesOpen)} className={`px-3 sm:px-4 py-3 text-xs sm:text-sm font-bold whitespace-nowrap ${categoriesOpen ? 'bg-purple-50 text-purple-800' : 'text-gray-800'}`}>☰ All Categories</button><Link to="/products" className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${!currentCategory ? 'text-purple-700 border-purple-700' : 'text-gray-600 border-transparent'}`}>All Products</Link>{MARKET_CATEGORIES.slice(0, 6).map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className={`px-3 py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 ${currentCategory === category.slug ? 'text-purple-700 border-purple-700' : 'text-gray-600 border-transparent'}`}>{category.icon} {category.short}</button>)}<button onClick={() => navigate('/products?flash=true')} className="px-3 py-3 text-xs sm:text-sm font-bold whitespace-nowrap text-red-600">⚡ Deals</button></div></nav>
+
+      {categoriesOpen && <div className="absolute left-0 right-0 top-full bg-white border-t shadow-2xl z-50"><div className="max-w-7xl mx-auto p-4 sm:p-6"><div className="flex justify-between mb-4"><div><h2 className="font-black">Explore all categories</h2><p className="text-xs text-gray-500">Browse by product type</p></div><button onClick={() => setCategoriesOpen(false)} className="text-xl">✕</button></div><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">{MARKET_CATEGORIES.map(category => <button key={category.slug} onClick={() => navigate(`/products?category=${category.slug}`)} className="p-3 sm:p-4 rounded-xl border hover:border-purple-400 hover:bg-purple-50 text-left flex gap-3"><span className="text-2xl">{category.icon}</span><span><strong className="text-sm block">{category.name}</strong><small className="text-gray-500 line-clamp-2">{category.description}</small></span></button>)}</div></div></div>}
+    </header>
+  </>
 }
 
 // Product Card with all features
@@ -1148,6 +1116,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
   const navigate = useNavigate()
   const [toast, setToast] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
+  const [quickViewOpen, setQuickViewOpen] = useState(false)
 
   const discount = product.originalPrice && product.originalPrice > product.price 
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) : 0
@@ -1166,13 +1135,14 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
 
   const handleQuickView = (e) => {
     e.stopPropagation()
-    navigate(`/products/${product._id}`)
+    setQuickViewOpen(true)
   }
 
   return (
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      <div 
+      {quickViewOpen && <div className="fixed inset-0 z-[9999] bg-[#0B0A16]/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickViewOpen(false)}><div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl grid sm:grid-cols-2" onClick={e => e.stopPropagation()}><div className="aspect-square bg-slate-100"><ProductImage product={product} alt={product.title} /></div><div className="p-6 flex flex-col"><div className="flex justify-between gap-3"><span className="text-[10px] font-black text-purple-700 uppercase tracking-wider">{product.seller?.sellerProfile?.storeName || product.seller?.name}</span><button onClick={() => setQuickViewOpen(false)} className="text-xl text-slate-400">✕</button></div><h2 className="text-xl font-black text-slate-950 mt-3 line-clamp-3">{product.title}</h2><div className="flex items-baseline gap-2 mt-4"><strong className="text-2xl text-purple-700">₦{product.price?.toLocaleString()}</strong>{product.originalPrice > product.price && <span className="text-sm line-through text-slate-400">₦{product.originalPrice?.toLocaleString()}</span>}</div><p className="text-sm text-slate-500 mt-3 line-clamp-3">{product.description || 'Open the full product page for complete details, delivery and seller information.'}</p><div className="mt-auto pt-6 grid grid-cols-2 gap-2"><button onClick={handleAddToCart} disabled={product.stock < 1} className="py-3 bg-gradient-to-r from-purple-700 to-indigo-600 text-white font-bold rounded-xl disabled:opacity-40">Add to Cart</button><button onClick={() => navigate(`/products/${product._id}`)} className="py-3 bg-slate-100 text-slate-800 font-bold rounded-xl">Full Details</button></div></div></div></div>}
+      <div
         className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 cursor-pointer relative group"
         onClick={() => navigate(`/products/${product._id}`)}
         onMouseEnter={() => setIsHovered(true)}
@@ -1198,7 +1168,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
         )}
         
         <div className="relative aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-          <ProductImage product={product} alt={product.title} className="group-hover:scale-105 transition-transform duration-500" />
+          <ProductImage product={product} index={isHovered && product.images?.length > 1 ? 1 : 0} alt={product.title} className="group-hover:scale-105 transition-transform duration-500" />
           {product.images?.length > 1 && (
             <span className="absolute bottom-2 left-2 bg-black/65 text-white text-[10px] px-2 py-1 rounded-full">📷 {product.images.length}</span>
           )}
@@ -1207,7 +1177,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
           <div className={`absolute inset-0 bg-black/40 flex items-center justify-center gap-2 transition-opacity ${
             isHovered ? 'opacity-100' : 'opacity-0'
           }`}>
-            <button onClick={handleQuickView} className="bg-white text-gray-800 px-4 py-2 rounded-full text-sm font-bold hover:bg-orange-500 hover:text-white transition-colors">
+            <button onClick={handleQuickView} className="bg-white text-gray-800 px-4 py-2 rounded-full text-sm font-bold hover:bg-purple-600 hover:text-white transition-colors">
               👁️ Quick View
             </button>
           </div>
@@ -1225,7 +1195,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
             )}
           </div>
           
-          <h3 className="text-xs sm:text-sm text-gray-800 line-clamp-2 mb-1 sm:mb-2 hover:text-orange-600">
+          <h3 className="text-xs sm:text-sm text-gray-800 line-clamp-2 mb-1 sm:mb-2 hover:text-purple-700">
             {product.title}
           </h3>
           
@@ -1242,12 +1212,12 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
           <div className="flex items-center gap-1 sm:gap-2 text-xs text-gray-500 mb-2 sm:mb-3 min-w-0">
             <span className="truncate">📍 {product.location || 'Nigeria'}</span>
             <span>•</span>
-            <span>{product.views || 0} views</span>
+            <span>{product.soldCount > 0 ? `${product.soldCount} sold` : `${product.views || 0} views`}</span>
             {product.stock <= 5 && product.stock > 0 && <span className="text-red-500">• {product.stock} left</span>}
           </div>
           
           <button onClick={handleAddToCart} disabled={product.stock < 1}
-            className="w-full py-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded hover:bg-orange-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+            className="w-full py-2 bg-purple-600 text-white text-xs sm:text-sm font-bold rounded hover:bg-purple-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
             {product.stock > 0 ? '🛒 Add to Cart' : 'Out of Stock'}
           </button>
         </div>
@@ -1276,7 +1246,7 @@ const RecentlyViewedSection = () => {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <h2 className="text-lg sm:text-xl font-bold text-gray-800">👁️ Recently Viewed</h2>
-          <Link to="/products" className="text-orange-600 font-medium hover:underline text-sm">View All →</Link>
+          <Link to="/products" className="text-purple-700 font-medium hover:underline text-sm">View All →</Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
           {recentlyViewed.slice(0, 5).map(p => <ProductCard key={p._id} product={p} />)}
@@ -1286,25 +1256,14 @@ const RecentlyViewedSection = () => {
   )
 }
 
-// Flash Deals Section with Countdown
+// Flash deals show only real approved sale listings; no resetting fake countdown.
 const FlashDealsSection = ({ products }) => {
   const navigate = useNavigate()
-  const endTime = new Date()
-  endTime.setHours(endTime.getHours() + 8)
-  
   return (
-    <div className="py-6 sm:py-8 bg-gradient-to-r from-red-600 to-orange-500">
+    <div className="py-6 sm:py-8 bg-gradient-to-r from-red-600 to-purple-600">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between mb-4 sm:mb-6">
-          <div className="flex items-center gap-4">
-            <div className="bg-white text-red-600 px-4 py-2 rounded font-bold flex items-center gap-2">
-              <span className="text-xl">⚡</span> FLASH DEALS
-            </div>
-            <div className="text-white">
-              <span className="text-sm">Ends in:</span>
-              <CountdownTimer endTime={endTime} />
-            </div>
-          </div>
+          <div><div className="bg-white text-red-600 px-4 py-2 rounded font-bold inline-flex items-center gap-2"><span className="text-xl">⚡</span> FLASH DEALS</div><p className="text-xs text-white/80 mt-2">Genuine seller discounts on approved listings</p></div>
           <button onClick={() => navigate('/products?flash=true')} className="text-white font-medium hover:underline text-sm flex items-center gap-1">
             View All <span>→</span>
           </button>
@@ -1318,10 +1277,16 @@ const FlashDealsSection = ({ products }) => {
   )
 }
 
+const TopSellingSection = ({ products }) => {
+  const navigate = useNavigate()
+  return <section className="py-8 sm:py-12 bg-white border-b"><div className="max-w-7xl mx-auto px-4"><div className="flex items-end justify-between gap-4 mb-6"><div><span className="text-xs font-bold uppercase tracking-widest text-green-600">Real delivered orders</span><h2 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">🔥 Top Selling Items</h2><p className="text-sm text-gray-500 mt-1">Ranked from genuine completed sales—not generated popularity.</p></div><button onClick={() => navigate('/products?sort=popular')} className="text-sm font-bold text-purple-700">View products →</button></div>{products?.length ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{products.map(product => <ProductCard key={product._id} product={product} />)}</div> : <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center"><p className="font-bold text-gray-700">Top-selling rankings are building</p><p className="text-sm text-gray-500 mt-1">Products will appear here after their first completed delivery.</p><button onClick={() => navigate('/products')} className="mt-3 text-sm font-bold text-purple-700">Explore available products</button></div>}</div></section>
+}
+
 // Home Page with Background Image for Hero
 const HomePage = () => {
   const [products, setProducts] = useState([])
   const [flashDeals, setFlashDeals] = useState([])
+  const [topSelling, setTopSelling] = useState([])
   const [categoryProducts, setCategoryProducts] = useState({})
   const [loading, setLoading] = useState(true)
   const { isAuthenticated, user } = useAuth()
@@ -1331,14 +1296,16 @@ const HomePage = () => {
     Promise.all([
       fetch(`${API_URL}/api/products?limit=20`).then(r => r.json()),
       fetch(`${API_URL}/api/products/flash-deals`).then(r => r.json()),
+      fetch(`${API_URL}/api/products/top-selling`).then(r => r.json()),
       fetch(`${API_URL}/api/products?category=phones-accessories&limit=4`).then(r => r.json()),
       fetch(`${API_URL}/api/products?category=electronics&limit=4`).then(r => r.json()),
       fetch(`${API_URL}/api/products?category=furniture&limit=4`).then(r => r.json()),
       fetch(`${API_URL}/api/products?category=fashion&limit=4`).then(r => r.json()),
       fetch(`${API_URL}/api/products?category=kitchen-home&limit=4`).then(r => r.json()),
-    ]).then(([productsData, dealsData, phonesData, electronicsData, furnitureData, fashionData, homeData]) => {
+    ]).then(([productsData, dealsData, topData, phonesData, electronicsData, furnitureData, fashionData, homeData]) => {
       if (productsData.success) setProducts(productsData.data.products)
       if (dealsData.success) setFlashDeals(dealsData.data.products)
+      if (topData.success) setTopSelling(topData.data.products || [])
       setCategoryProducts({
         'phones-accessories': phonesData.data?.products || [],
         'electronics': electronicsData.data?.products || [],
@@ -1350,39 +1317,41 @@ const HomePage = () => {
     })
   }, [])
 
+  const productsNearYou = user?.address?.state ? products.filter(product => (product.location || '').toLowerCase().includes(user.address.state.toLowerCase())).slice(0, 6) : []
+
   return (
-    <div className="bg-gray-100 min-h-screen">
-      {/* Nationwide marketplace hero with a real responsive background image */}
+    <div className="bg-[#F8FAFC] min-h-screen">
+      {/* FlexiaCart premium hero */}
       <section
-        className="hero-photo relative overflow-hidden min-h-[520px] sm:min-h-[580px] flex items-center"
+        className="hero-photo relative overflow-hidden min-h-[500px] sm:min-h-[570px] flex items-center max-w-[1600px] mx-auto mt-2 sm:mt-6 rounded-2xl sm:rounded-3xl shadow-2xl border border-purple-950/40"
         style={{ backgroundImage: "url('/hero-marketplace.jpg')" }}
-        aria-label="Campus Market nationwide shopping marketplace"
+        aria-label="FlexiaCart nationwide shopping marketplace"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0b1026]/95 via-[#111827]/80 to-[#111827]/10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0B0A16]/95 via-purple-950/80 to-indigo-950/10" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
         <div className="relative z-10 max-w-7xl mx-auto w-full px-4 py-12 sm:py-16">
           <div className="max-w-2xl text-white">
-            <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold mb-5">
-              🇳🇬 Built for campus. Open to everyone across Nigeria.
+            <span className="inline-flex items-center gap-2 bg-purple-600/25 border border-purple-400/40 backdrop-blur-md px-3 py-1.5 rounded-full text-xs sm:text-sm font-bold mb-5 text-purple-100">
+              <span className="text-amber-400">✦</span> Nigeria’s flexible multi-vendor marketplace
             </span>
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.08] tracking-tight">
-              Discover trusted products from sellers near you
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.05] tracking-tight">
+              Shop More. <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-amber-300">Sell Smarter.</span>
             </h1>
-            <p className="text-sm sm:text-lg text-gray-200 mt-5 max-w-xl leading-relaxed">
-              Shop phones, fashion, electronics, home essentials and more. Compare sellers, chat before buying and get delivery within your state or nationwide.
+            <p className="text-sm sm:text-lg text-slate-200 mt-5 max-w-xl leading-relaxed">
+              Discover trusted products from sellers near you. Compare stores, chat before buying, and arrange local pickup or nationwide delivery.
             </p>
 
             <form onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('heroSearch'); navigate(q ? `/products?search=${encodeURIComponent(q)}` : '/products') }} className="mt-7 bg-white p-1.5 rounded-xl shadow-2xl flex max-w-xl">
               <input name="heroSearch" aria-label="Search products" placeholder="What are you looking for?" className="min-w-0 flex-1 px-4 py-3 text-sm text-gray-900 rounded-lg outline-none" />
-              <button type="submit" className="px-5 sm:px-7 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg">Search</button>
+              <button type="submit" className="px-5 sm:px-7 py-3 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700 text-white font-bold rounded-lg">Search</button>
             </form>
 
             <div className="flex flex-wrap gap-3 mt-5">
-              <button onClick={() => navigate('/products')} className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg">🛍️ Shop all products</button>
+              <button onClick={() => navigate('/products')} className="px-6 py-3 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black rounded-xl shadow-lg shadow-purple-900/30">Shop all products →</button>
               {isAuthenticated && (user?.role === 'seller' || user?.role === 'admin') ? (
                 <button onClick={() => navigate('/seller')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">📊 Open seller dashboard</button>
               ) : (
-                <button onClick={() => navigate(isAuthenticated ? '/profile' : '/register')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">🚀 Start selling</button>
+                <button onClick={() => navigate(isAuthenticated ? (user?.role === 'buyer' ? '/become-seller' : '/seller') : '/register')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">🚀 Start selling</button>
               )}
             </div>
 
@@ -1415,6 +1384,11 @@ const HomePage = () => {
       {/* Flash Deals */}
       {flashDeals.length > 0 && <FlashDealsSection products={flashDeals} />}
 
+      {/* Top selling uses only delivered-order quantities */}
+      <TopSellingSection products={topSelling} />
+
+      {productsNearYou.length > 0 && <section className="py-8 sm:py-12 bg-[#F8FAFC]"><div className="max-w-7xl mx-auto px-4"><div className="flex items-end justify-between mb-5"><div><span className="text-[10px] font-black uppercase tracking-wider text-purple-700">Local availability</span><h2 className="text-2xl font-black text-slate-950">📍 Products near you</h2><p className="text-xs text-slate-500">Approved listings from sellers in {user.address.state}.</p></div><button onClick={() => navigate(`/products?location=${encodeURIComponent(user.address.state)}`)} className="text-xs font-bold text-purple-700">View all →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{productsNearYou.map(product => <ProductCard key={product._id} product={product} />)}</div></div></section>}
+
       {/* Recently Viewed */}
       <RecentlyViewedSection />
 
@@ -1427,7 +1401,7 @@ const HomePage = () => {
                 <h2 className="text-lg sm:text-xl font-bold text-gray-800 capitalize">
                   {`${MARKET_CATEGORIES.find(item => item.slug === category)?.icon || '📦'} ${MARKET_CATEGORIES.find(item => item.slug === category)?.name || category.replace('-', ' ')}`}
                 </h2>
-                <button onClick={() => navigate(`/products?category=${category}`)} className="text-orange-600 font-medium hover:underline text-sm">
+                <button onClick={() => navigate(`/products?category=${category}`)} className="text-purple-700 font-medium hover:underline text-sm">
                   View All →
                 </button>
               </div>
@@ -1444,7 +1418,7 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <h2 className="text-lg sm:text-xl font-bold text-gray-800">⭐ All Products</h2>
-            <button onClick={() => navigate('/products')} className="text-orange-600 font-medium hover:underline text-sm">
+            <button onClick={() => navigate('/products')} className="text-purple-700 font-medium hover:underline text-sm">
               View All →
             </button>
           </div>
@@ -1460,8 +1434,8 @@ const HomePage = () => {
       <section className="py-10 sm:py-14 bg-gray-950 text-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div><span className="text-orange-400 text-xs font-bold uppercase tracking-widest">Simple and transparent</span><h2 className="text-2xl sm:text-4xl font-black mt-2">From discovery to delivery</h2><p className="text-gray-300 mt-3 max-w-xl">Campus Market helps buyers find useful products and helps independent sellers present their stores professionally to customers in every state.</p><div className="flex flex-wrap gap-3 mt-6"><button onClick={() => navigate('/products')} className="px-5 py-3 bg-orange-500 font-bold rounded-xl">Start shopping</button><button onClick={() => navigate(isAuthenticated ? '/profile' : '/register')} className="px-5 py-3 border border-white/30 font-bold rounded-xl">Become a seller</button></div></div>
-            <div className="grid sm:grid-cols-3 gap-3">{[['1', 'Browse', 'Search or explore clear categories and seller locations.'], ['2', 'Compare', 'Check images, condition, delivery price and chat with the seller.'], ['3', 'Receive', 'Track the order and inspect Pay-on-Delivery items before paying.']].map(([number, title, body]) => <div key={number} className="bg-white/5 border border-white/10 p-5 rounded-2xl"><span className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center font-black">{number}</span><h3 className="font-bold mt-4">{title}</h3><p className="text-xs text-gray-400 mt-2 leading-relaxed">{body}</p></div>)}</div>
+            <div><span className="text-purple-400 text-xs font-bold uppercase tracking-widest">Simple and transparent</span><h2 className="text-2xl sm:text-4xl font-black mt-2">From discovery to delivery</h2><p className="text-gray-300 mt-3 max-w-xl">FlexiaCart helps buyers find useful products and helps independent sellers present their stores professionally to customers in every state.</p><div className="flex flex-wrap gap-3 mt-6"><button onClick={() => navigate('/products')} className="px-5 py-3 bg-purple-600 font-bold rounded-xl">Start shopping</button><button onClick={() => navigate(isAuthenticated ? (user?.role === 'buyer' ? '/become-seller' : '/seller') : '/register')} className="px-5 py-3 border border-white/30 font-bold rounded-xl">Become a seller</button></div></div>
+            <div className="grid sm:grid-cols-3 gap-3">{[['1', 'Browse', 'Search or explore clear categories and seller locations.'], ['2', 'Compare', 'Check images, condition, delivery price and chat with the seller.'], ['3', 'Receive', 'Track the order and inspect Pay-on-Delivery items before paying.']].map(([number, title, body]) => <div key={number} className="bg-white/5 border border-white/10 p-5 rounded-2xl"><span className="w-9 h-9 bg-purple-600 rounded-full flex items-center justify-center font-black">{number}</span><h3 className="font-bold mt-4">{title}</h3><p className="text-xs text-gray-400 mt-2 leading-relaxed">{body}</p></div>)}</div>
           </div>
         </div>
       </section>
@@ -1470,11 +1444,11 @@ const HomePage = () => {
       <div className="py-8 sm:py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">
-            🛡️ Why Choose Campus Market
+            🛡️ Why Choose FlexiaCart
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
             {[
-              ['🇳🇬', 'Nationwide Reach', 'Buy and sell beyond campus'],
+              ['🇳🇬', 'Nationwide Reach', 'Buy and sell across Nigeria'],
               ['📷', 'Clear Listings', 'Multiple images and delivery details'],
               ['✅', 'Reviewed Sellers', 'Seller and listing approval tools'],
               ['💬', 'Direct Communication', 'Chat and report issues in one place']
@@ -1515,17 +1489,17 @@ const StorePage = () => {
   }
 
   const shareStore = async () => {
-    const share = { title: `${data?.seller?.sellerProfile?.storeName || data?.seller?.name} on Campus Market`, text: 'Explore this verified Campus Market store.', url: window.location.href }
+    const share = { title: `${data?.seller?.sellerProfile?.storeName || data?.seller?.name} on FlexiaCart`, text: 'Explore this verified FlexiaCart store.', url: window.location.href }
     try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Store link copied', type: 'success' }) } } catch {}
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
-  if (!data) return <div className="min-h-screen flex items-center justify-center text-center"><div><span className="text-6xl">🏪</span><h1 className="text-2xl font-bold mt-4">Store not found</h1><button onClick={() => navigate('/products')} className="mt-4 text-orange-600 font-bold">Browse products</button></div></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
+  if (!data) return <div className="min-h-screen flex items-center justify-center text-center"><div><span className="text-6xl">🏪</span><h1 className="text-2xl font-bold mt-4">Store not found</h1><button onClick={() => navigate('/products')} className="mt-4 text-purple-700 font-bold">Browse products</button></div></div>
   const { seller, products, metrics } = data
   return <div className="min-h-screen bg-gray-100">
     {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-    <section className="relative bg-gradient-to-r from-gray-950 via-gray-900 to-orange-950 text-white overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 py-10 sm:py-16 relative z-10"><div className="flex flex-col md:flex-row md:items-end justify-between gap-6"><div className="flex items-center gap-4"><div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl bg-white text-orange-600 flex items-center justify-center text-4xl font-black shadow-xl overflow-hidden">{seller.sellerProfile?.logo ? <img src={seller.sellerProfile.logo} className="w-full h-full object-cover" /> : (seller.sellerProfile?.storeName || seller.name).charAt(0)}</div><div><div className="flex items-center gap-2 flex-wrap"><h1 className="text-2xl sm:text-4xl font-black">{seller.sellerProfile?.storeName || seller.name}</h1><VerificationBadge level={seller.verificationLevel} /></div><p className="text-gray-300 mt-2 max-w-xl">{seller.sellerProfile?.description || 'Independent seller on Campus Market.'}</p><p className="text-xs text-gray-400 mt-2">📍 {seller.address?.state || 'Nigeria'} • Member since {new Date(seller.createdAt).getFullYear()}</p></div></div><div className="flex gap-2"><button onClick={toggleFollow} className={`px-5 py-3 rounded-xl font-bold ${following ? 'bg-white text-gray-800' : 'bg-orange-500 text-white'}`}>{following ? '✓ Following' : '+ Follow Store'}</button><button onClick={shareStore} className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl">↗ Share</button></div></div></div>
+    <section className="relative bg-gradient-to-r from-gray-950 via-gray-900 to-purple-950 text-white overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 py-10 sm:py-16 relative z-10"><div className="flex flex-col md:flex-row md:items-end justify-between gap-6"><div className="flex items-center gap-4"><div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl bg-white text-purple-700 flex items-center justify-center text-4xl font-black shadow-xl overflow-hidden">{seller.sellerProfile?.logo ? <img src={seller.sellerProfile.logo} className="w-full h-full object-cover" /> : (seller.sellerProfile?.storeName || seller.name).charAt(0)}</div><div><div className="flex items-center gap-2 flex-wrap"><h1 className="text-2xl sm:text-4xl font-black">{seller.sellerProfile?.storeName || seller.name}</h1><VerificationBadge level={seller.verificationLevel} /></div><p className="text-gray-300 mt-2 max-w-xl">{seller.sellerProfile?.description || 'Independent seller on FlexiaCart.'}</p><p className="text-xs text-gray-400 mt-2">📍 {seller.address?.state || 'Nigeria'} • Member since {new Date(seller.createdAt).getFullYear()}</p></div></div><div className="flex gap-2"><button onClick={toggleFollow} className={`px-5 py-3 rounded-xl font-bold ${following ? 'bg-white text-gray-800' : 'bg-purple-600 text-white'}`}>{following ? '✓ Following' : '+ Follow Store'}</button><button onClick={shareStore} className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl">↗ Share</button></div></div></div>
     </section>
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">{[['Products', metrics.products], ['Delivered sales', metrics.deliveredSales], ['Followers', metrics.followers], ['Verified reviews', metrics.reviews], ['Rating', `${Number(metrics.rating || 0).toFixed(1)}★`]].map(([label,value]) => <div key={label} className="bg-white border rounded-xl p-4 text-center"><p className="text-xl font-black text-gray-900">{value}</p><p className="text-xs text-gray-500 mt-1">{label}</p></div>)}</div>
@@ -1553,6 +1527,9 @@ const ProductsPage = () => {
   const search = searchParams.get('search') || ''
   const flash = searchParams.get('flash') || ''
   const seller = searchParams.get('seller') || ''
+  const requestedLocation = searchParams.get('location') || ''
+
+  useEffect(() => { if (requestedLocation) setLocationFilter(requestedLocation) }, [requestedLocation])
 
   useEffect(() => {
     setLoading(true)
@@ -1560,11 +1537,12 @@ const ProductsPage = () => {
     if (category) url += `&category=${encodeURIComponent(category)}`
     if (search) url += `&search=${encodeURIComponent(search)}`
     if (seller) url += `&seller=${encodeURIComponent(seller)}`
+    if (requestedLocation) url += `&location=${encodeURIComponent(requestedLocation)}`
     fetch(url).then(r => r.json()).then(d => { 
       if (d.success) setProducts(d.data.products); 
       setLoading(false) 
     }).catch(() => setLoading(false))
-  }, [category, search, seller, location.search])
+  }, [category, search, seller, requestedLocation, location.search])
 
   const filteredProducts = products
     .filter(p => p.price >= priceRange[0] && p.price <= priceRange[1])
@@ -1596,9 +1574,9 @@ const ProductsPage = () => {
     <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 bg-white p-3 rounded-lg flex-wrap">
-          <button onClick={() => navigate('/')} className="hover:text-orange-600">Home</button>
+          <button onClick={() => navigate('/')} className="hover:text-purple-700">Home</button>
           <span>/</span>
-          <button onClick={() => navigate('/products')} className="hover:text-orange-600">Products</button>
+          <button onClick={() => navigate('/products')} className="hover:text-purple-700">Products</button>
           {(category || search) && (
             <><span>/</span><span className="text-gray-800">{getCategoryName()}</span></>
           )}
@@ -1648,7 +1626,7 @@ const ProductsPage = () => {
               <div className="flex">
                 {[0, 3, 4, 4.5].map(r => (
                   <button key={r} onClick={() => setMinRating(r)}
-                    className={`px-2 py-1 text-sm rounded ${minRating === r ? 'bg-orange-500 text-white' : 'bg-gray-100'}`}>
+                    className={`px-2 py-1 text-sm rounded ${minRating === r ? 'bg-purple-600 text-white' : 'bg-gray-100'}`}>
                     {r === 0 ? 'All' : `${r}★+`}
                   </button>
                 ))}
@@ -1656,7 +1634,7 @@ const ProductsPage = () => {
             </div>
             
             <button onClick={() => { setPriceRange([0, 1000000]); setMinRating(0); setLocationFilter('') }}
-              className="text-sm text-orange-600 hover:underline">Clear Filters</button>
+              className="text-sm text-purple-700 hover:underline">Clear Filters</button>
           </div>
         </div>
         
@@ -1669,7 +1647,7 @@ const ProductsPage = () => {
             <span className="text-5xl sm:text-6xl block mb-4">🔍</span>
             <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">No products found</h2>
             <p className="text-gray-500 text-sm">Try adjusting your filters or search terms</p>
-            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-orange-500 text-white font-bold rounded-lg text-sm">
+            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-purple-600 text-white font-bold rounded-lg text-sm">
               Browse All Products
             </button>
           </div>
@@ -1728,7 +1706,7 @@ const ProductDetailPage = () => {
   }
 
   const handleShareProduct = async () => {
-    const share = { title: product.title, text: `Check out ${product.title} on Campus Market for ₦${product.price?.toLocaleString()}`, url: window.location.href }
+    const share = { title: product.title, text: `Check out ${product.title} on FlexiaCart for ₦${product.price?.toLocaleString()}`, url: window.location.href }
     try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Product link copied', type: 'success' }) } } catch {}
   }
 
@@ -1758,14 +1736,14 @@ const ProductDetailPage = () => {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
     </div>
   )
   if (!product) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">Product not found</h2>
-        <button onClick={() => navigate('/products')} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg">
+        <button onClick={() => navigate('/products')} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg">
           Browse Products
         </button>
       </div>
@@ -1783,9 +1761,9 @@ const ProductDetailPage = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 bg-white p-3 rounded-lg flex-wrap">
-            <button onClick={() => navigate('/')} className="hover:text-orange-600">Home</button>
+            <button onClick={() => navigate('/')} className="hover:text-purple-700">Home</button>
             <span>/</span>
-            <button onClick={() => navigate('/products')} className="hover:text-orange-600">Products</button>
+            <button onClick={() => navigate('/products')} className="hover:text-purple-700">Products</button>
             <span>/</span>
             <span className="text-gray-800 truncate">{product.title}</span>
           </div>
@@ -1805,7 +1783,7 @@ const ProductDetailPage = () => {
                 <div className="grid grid-cols-5 sm:grid-cols-6 gap-2 mt-3">
                   {product.images.slice(0, 6).map((image, index) => (
                     <button key={`${image}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`View product image ${index + 1}`}
-                      className={`aspect-square rounded-lg overflow-hidden border-2 ${selectedImage === index ? 'border-orange-500 ring-2 ring-orange-100' : 'border-gray-200 hover:border-orange-300'}`}>
+                      className={`aspect-square rounded-lg overflow-hidden border-2 ${selectedImage === index ? 'border-purple-600 ring-2 ring-purple-100' : 'border-gray-200 hover:border-purple-300'}`}>
                       <ProductImage product={product} index={index} alt={`${product.title} thumbnail ${index + 1}`} />
                     </button>
                   ))}
@@ -1839,7 +1817,7 @@ const ProductDetailPage = () => {
                 </div>
                 
                 {/* Price */}
-                <div className="bg-orange-50 p-3 sm:p-4 rounded-lg mb-3 sm:mb-4">
+                <div className="bg-purple-50 p-3 sm:p-4 rounded-lg mb-3 sm:mb-4">
                   <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
                     <span className="text-2xl sm:text-3xl font-bold" style={{ color: colors.primary }}>
                       ₦{product.price?.toLocaleString()}
@@ -1888,7 +1866,7 @@ const ProductDetailPage = () => {
                 {/* Action Buttons */}
                 <div className="flex gap-2 sm:gap-4">
                   <button onClick={handleAddToCart} 
-                    className="flex-1 py-2 sm:py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 transition-colors text-sm sm:text-base">
+                    className="flex-1 py-2 sm:py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors text-sm sm:text-base">
                     🛒 Add to Cart
                   </button>
                   <button onClick={handleBuyNow} 
@@ -1914,9 +1892,9 @@ const ProductDetailPage = () => {
               <div className="bg-white rounded-xl p-4 sm:p-6">
                 <h3 className="font-bold text-gray-800 mb-3 text-sm sm:text-base">🏪 Sold by</h3>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center"><span className="text-orange-600 font-bold text-xl">{(product.seller?.sellerProfile?.storeName || product.seller?.name)?.charAt(0)}</span></div>
+                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center"><span className="text-purple-700 font-bold text-xl">{(product.seller?.sellerProfile?.storeName || product.seller?.name)?.charAt(0)}</span></div>
                   <div className="flex-1 min-w-0"><p className="font-bold text-gray-800 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name}</p><VerificationBadge level={sellerMetrics.verificationLevel} /><p className="text-xs text-gray-500 mt-1">⭐ {Number(product.seller?.sellerProfile?.rating || 0).toFixed(1)} • {sellerMetrics.deliveredSales || 0} delivered • {sellerMetrics.followers || 0} followers</p></div>
-                  <button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="px-3 py-2 bg-orange-100 text-orange-700 rounded-lg text-xs font-bold hover:bg-orange-200">Visit Store</button>
+                  <button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded-lg text-xs font-bold hover:bg-purple-200">Visit Store</button>
                 </div>
                 {product.location && <p className="text-sm text-gray-500 mt-3">📍 Ships from {product.location}</p>}
               </div>
@@ -1937,7 +1915,7 @@ const ProductDetailPage = () => {
               <div className="bg-white rounded-lg p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-gray-800 text-sm sm:text-base">⭐ Customer Reviews ({reviews.length})</h3>
-                  {user && <button onClick={() => setShowReviewModal(true)} className="px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded hover:bg-orange-600">
+                  {user && <button onClick={() => setShowReviewModal(true)} className="px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded hover:bg-purple-700">
                     ✍️ Write Review
                   </button>}
                 </div>
@@ -1972,7 +1950,7 @@ const ProductDetailPage = () => {
                     <div key={review._id} className="border-b pb-4">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-bold text-sm">
+                          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-sm">
                             {review.user?.name?.charAt(0)}
                           </div>
                           <div>
@@ -1998,8 +1976,8 @@ const ProductDetailPage = () => {
             </div>
           </div>
 
-          {sellerProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">More from this seller</h2><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="text-sm font-bold text-orange-600">Visit store →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">{sellerProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
-          {similarProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">Similar products</h2><button onClick={() => navigate(`/products?category=${product.category}`)} className="text-sm font-bold text-orange-600">View category →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{similarProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
+          {sellerProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">More from this seller</h2><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="text-sm font-bold text-purple-700">Visit store →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">{sellerProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
+          {similarProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">Similar products</h2><button onClick={() => navigate(`/products?category=${product.category}`)} className="text-sm font-bold text-purple-700">View category →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{similarProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
         </div>
       </div>
     </>
@@ -2018,7 +1996,7 @@ const CartPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="text-center bg-white p-6 sm:p-8 rounded-lg shadow">
         <h2 className="text-lg sm:text-2xl font-bold mb-4">Please sign in</h2>
-        <button onClick={() => navigate('/login')} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg">Sign In</button>
+        <button onClick={() => navigate('/login')} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg">Sign In</button>
       </div>
     </div>
   )
@@ -2028,7 +2006,7 @@ const CartPage = () => {
       <div className="text-center bg-white p-6 sm:p-8 rounded-lg shadow">
         <span className="text-5xl sm:text-6xl block mb-4">🛒</span>
         <h2 className="text-lg sm:text-2xl font-bold mb-4">Your cart is empty</h2>
-        <button onClick={() => navigate('/products')} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg">Start Shopping</button>
+        <button onClick={() => navigate('/products')} className="px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg">Start Shopping</button>
       </div>
     </div>
   )
@@ -2053,7 +2031,7 @@ const CartPage = () => {
                   <p className="text-xs sm:text-sm text-gray-500 mb-2">Supplier: {item.product?.seller?.name}</p>
                   <div className="flex items-center gap-2">
                     <StarRating rating={item.product?.rating || 0} size="sm" />
-                    <button onClick={() => { addToWishlist(item.product); removeFromCart(item.product?._id); setToast({ message: 'Moved to wishlist!', type: 'success' }) }} className="text-xs text-orange-600 hover:underline">Save for later</button>
+                    <button onClick={() => { addToWishlist(item.product); removeFromCart(item.product?._id); setToast({ message: 'Moved to wishlist!', type: 'success' }) }} className="text-xs text-purple-700 hover:underline">Save for later</button>
                   </div>
                   <p className="text-base sm:text-lg font-bold mt-2" style={{ color: colors.primary }}>₦{item.product?.price?.toLocaleString()}</p>
                 </div>
@@ -2082,11 +2060,11 @@ const CartPage = () => {
               <p className="text-xs text-blue-800">🚚 Delivery prices are set per seller for local and nationwide orders. Enter your state at checkout for the final amount.</p>
             </div>
             
-            <div className="bg-orange-50 p-3 rounded-lg mb-4">
-              <p className="text-xs text-orange-800">🛡️ Current payment method is Pay on Delivery. Inspect or confirm your order before paying.</p>
+            <div className="bg-purple-50 p-3 rounded-lg mb-4">
+              <p className="text-xs text-purple-900">🛡️ Current payment method is Pay on Delivery. Inspect or confirm your order before paying.</p>
             </div>
             
-            <button onClick={() => navigate('/checkout')} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 text-sm sm:text-base">
+            <button onClick={() => navigate('/checkout')} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 text-sm sm:text-base">
               💳 Proceed to Checkout
             </button>
           </div>
@@ -2118,7 +2096,7 @@ const CheckoutPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="text-center bg-white p-8 rounded-lg shadow">
         <h2 className="text-2xl font-bold mb-4">Your cart is empty</h2>
-        <button onClick={() => navigate('/products')} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg">Shop Now</button>
+        <button onClick={() => navigate('/products')} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg">Shop Now</button>
       </div>
     </div>
   )
@@ -2171,23 +2149,23 @@ const CheckoutPage = () => {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="text-sm text-gray-600 mb-1 block">Full Name *</label>
-                    <input value={address.fullName} onChange={e => setAddress({...address, fullName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your full name" />
+                    <input value={address.fullName} onChange={e => setAddress({...address, fullName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Your full name" />
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-sm text-gray-600 mb-1 block">Phone Number *</label>
-                    <input value={address.phone} onChange={e => setAddress({...address, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="+234..." />
+                    <input value={address.phone} onChange={e => setAddress({...address, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="+234..." />
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-sm text-gray-600 mb-1 block">Street Address *</label>
-                    <input value={address.street} onChange={e => setAddress({...address, street: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                    <input value={address.street} onChange={e => setAddress({...address, street: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-600 mb-1 block">City *</label>
-                    <input value={address.city} onChange={e => setAddress({...address, city: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                    <input value={address.city} onChange={e => setAddress({...address, city: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-600 mb-1 block">State *</label>
-                    <input value={address.state} onChange={e => setAddress({...address, state: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                    <input value={address.state} onChange={e => setAddress({...address, state: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                   </div>
                 </div>
               </div>
@@ -2202,11 +2180,11 @@ const CheckoutPage = () => {
               </div>
               
               <div className="space-y-2 mb-4">
-                <button onClick={() => setPaymentMethod('flutterwave')} disabled={!['test','live'].includes(paymentConfig.paymentMode)} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'flutterwave' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'} disabled:opacity-50`}><p className="font-bold text-sm">💳 Pay securely with Flutterwave {paymentConfig.paymentMode === 'test' && <span className="text-[10px] bg-yellow-200 px-2 py-0.5 rounded-full">TEST MODE</span>}</p><p className="text-xs text-gray-500 mt-1">Card, bank transfer, USSD and enabled methods. Payment is verified by the backend.</p></button>
-                <button onClick={() => setPaymentMethod('pay_on_delivery')} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'pay_on_delivery' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}><p className="font-bold text-sm">🚚 Pay on Delivery</p><p className="text-xs text-gray-500 mt-1">Inspect or confirm the order before paying the seller.</p></button>
+                <button onClick={() => setPaymentMethod('flutterwave')} disabled={!['test','live'].includes(paymentConfig.paymentMode)} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'flutterwave' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'} disabled:opacity-50`}><p className="font-bold text-sm">💳 Pay securely with Flutterwave {paymentConfig.paymentMode === 'test' && <span className="text-[10px] bg-yellow-200 px-2 py-0.5 rounded-full">TEST MODE</span>}</p><p className="text-xs text-gray-500 mt-1">Card, bank transfer, USSD and enabled methods. Payment is verified by the backend.</p></button>
+                <button onClick={() => setPaymentMethod('pay_on_delivery')} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'pay_on_delivery' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}><p className="font-bold text-sm">🚚 Pay on Delivery</p><p className="text-xs text-gray-500 mt-1">Inspect or confirm the order before paying the seller.</p></button>
               </div>
               {paymentConfig.paymentMode === 'not-configured' && <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 text-xs text-yellow-800">Flutterwave has not been configured on Render, so only Pay on Delivery is available.</div>}
-              <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50">{loading ? 'Processing...' : paymentMethod === 'flutterwave' ? 'Continue to Flutterwave' : 'Place Pay-on-Delivery Order'}</button>
+              <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50">{loading ? 'Processing...' : paymentMethod === 'flutterwave' ? 'Continue to Flutterwave' : 'Place Pay-on-Delivery Order'}</button>
             </div>
           </div>
         </div>
@@ -2229,7 +2207,7 @@ const PaymentCallbackPage = () => {
     fetch(`${API_URL}/api/payments/flutterwave/verify?tx_ref=${encodeURIComponent(txRef)}&transaction_id=${encodeURIComponent(transactionId)}`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
       .then(r => r.json()).then(data => { if (data.success) { clearCart(); setState({ loading: false, success: true, message: 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
   }, [])
-  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-orange-500 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-purple-600 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
 }
 
 // My Orders Page with Tracking and Reports
@@ -2360,7 +2338,7 @@ const MyOrdersPage = () => {
                   </button>
                   {order.paymentMethod === 'flutterwave' && order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => retryFlutterwave(order)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded">Retry Flutterwave Payment</button>}
                   {order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => cancelUnpaidOrder(order)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded">Cancel Unpaid Order</button>}
-                  {order.status === 'delivered' && <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-orange-100 text-orange-600 text-xs font-medium rounded hover:bg-orange-200">✍️ Leave Review</button>}
+                  {order.status === 'delivered' && <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200">✍️ Leave Review</button>}
                   {order.status === 'delivered' && order.paymentStatus === 'paid' && !order.buyerConfirmedDeliveryAt && <button onClick={() => confirmDelivery(order._id)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">✓ Confirm Delivery & Release Seller</button>}
                   {order.status !== 'cancelled' && (
                     <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
@@ -2376,7 +2354,7 @@ const MyOrdersPage = () => {
             <span className="text-5xl sm:text-6xl block mb-4">📦</span>
             <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">No orders yet</h2>
             <p className="text-gray-500 text-sm">Start shopping to see your orders here</p>
-            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-orange-500 text-white font-bold rounded-lg text-sm">Browse Products</button>
+            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-purple-600 text-white font-bold rounded-lg text-sm">Browse Products</button>
           </div>
         )}
       </div>
@@ -2394,7 +2372,7 @@ const WishlistPage = () => {
 
   if (!user) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center"><h2 className="text-2xl font-bold mb-4">Please sign in</h2><button onClick={() => navigate('/login')} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg">Sign In</button></div>
+      <div className="text-center"><h2 className="text-2xl font-bold mb-4">Please sign in</h2><button onClick={() => navigate('/login')} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg">Sign In</button></div>
     </div>
   )
 
@@ -2409,7 +2387,7 @@ const WishlistPage = () => {
             <span className="text-5xl sm:text-6xl block mb-4">💔</span>
             <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">Your wishlist is empty</h2>
             <p className="text-gray-500 text-sm">Save items you love for later!</p>
-            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-orange-500 text-white font-bold rounded-lg text-sm">Start Shopping</button>
+            <button onClick={() => navigate('/products')} className="mt-4 px-6 py-3 bg-purple-600 text-white font-bold rounded-lg text-sm">Start Shopping</button>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
@@ -2426,7 +2404,7 @@ const WishlistPage = () => {
                       removeFromWishlist(product._id)
                       setToast({ message: '✓ Added to cart!', type: 'success' })
                     }
-                  }} className="flex-1 py-2 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600">🛒</button>
+                  }} className="flex-1 py-2 bg-purple-600 text-white text-sm font-bold rounded hover:bg-purple-700">🛒</button>
                   <button onClick={() => navigate(`/products/${product._id}`)} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded hover:bg-gray-200">👁️</button>
                 </div>
               </div>
@@ -2468,10 +2446,10 @@ const LoginPage = () => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
         <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
           <div className="bg-white rounded-lg w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <span style={{ color: colors.primary }} className="text-2xl font-bold">CM</span>
+            <span style={{ color: colors.primary }} className="text-2xl font-bold">FC</span>
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-          <p className="text-orange-100 text-sm mt-1">Sign in to your account</p>
+          <p className="text-purple-100 text-sm mt-1">Sign in to your account</p>
         </div>
         
         <div className="p-6">
@@ -2479,22 +2457,22 @@ const LoginPage = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Email Address</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="your@email.com" required />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="your@email.com" required />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Password</label>
               <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="••••••••" required />
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPassword ? '👁️' : '👁️‍🗨️'}</button>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm">
+            <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm">
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
           
           <div className="flex items-center justify-between mt-4 text-sm">
-            <Link to="/register" className="text-orange-600 font-bold hover:underline">Create Account</Link>
+            <Link to="/register" className="text-purple-700 font-bold hover:underline">Create Account</Link>
             <span className="text-gray-500">Use the Support button for login help</span>
           </div>
           
@@ -2511,7 +2489,7 @@ const LoginPage = () => {
 const RegisterPage = () => {
   const { register, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'buyer', phone: '', storeName: '', referralCode: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', phone: '', referralCode: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -2534,70 +2512,71 @@ const RegisterPage = () => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
         <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
           <h1 className="text-2xl font-bold text-white">Create Account</h1>
-          <p className="text-orange-100 text-sm mt-1">Join Campus Market - It's Free!</p>
+          <p className="text-purple-100 text-sm mt-1">Join FlexiaCart - It's Free!</p>
         </div>
         
-        <div className="p-6 pb-0">
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <button type="button" onClick={() => setForm({...form, role: 'buyer'})} className={`p-4 border-2 rounded-lg text-center transition-all ${form.role === 'buyer' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-              <span className="text-3xl block mb-2">🛒</span>
-              <span className={`font-bold ${form.role === 'buyer' ? 'text-orange-600' : 'text-gray-600'}`}>Buyer</span>
-            </button>
-            <button type="button" onClick={() => setForm({...form, role: 'seller'})} className={`p-4 border-2 rounded-lg text-center transition-all ${form.role === 'seller' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-              <span className="text-3xl block mb-2">🏪</span>
-              <span className={`font-bold ${form.role === 'seller' ? 'text-orange-600' : 'text-gray-600'}`}>Seller</span>
-            </button>
-          </div>
-        </div>
-        
-        <div className="p-6 pt-0">
+        <div className="p-6">
+          <div className="mb-5 bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-900">Create one account to shop, message sellers and track orders. You can apply to become a seller later from the account menu.</div>
           {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm text-center">⚠️ {error}</div>}
           <form onSubmit={handleRegister} className="space-y-3">
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Full Name *</label>
-              <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your full name" required />
+              <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Your full name" required />
             </div>
-            {form.role === 'seller' && (
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Store Name *</label>
-                <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your store/business name" required />
-              </div>
-            )}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Email Address *</label>
-              <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" required />
+              <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" required />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
-              <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="09051103883" />
+              <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="09051103883" />
             </div>
             <div><label className="text-sm font-medium text-gray-700 mb-1 block">Referral Code (optional)</label><input value={form.referralCode} onChange={e => setForm({...form, referralCode: e.target.value.toUpperCase()})} className="w-full px-4 py-3 border border-gray-300 rounded text-sm uppercase" placeholder="Enter a friend’s code" /></div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Password * (min 8 chars)</label>
-              <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Min 8 characters" required />
+              <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Min 8 characters" required />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Confirm Password *</label>
-              <input type="password" value={form.confirmPassword} onChange={e => setForm({...form, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Confirm password" required />
+              <input type="password" value={form.confirmPassword} onChange={e => setForm({...form, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Confirm password" required />
             </div>
-            <button type="submit" disabled={loading} className="w-full py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm">
+            <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm">
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
           </form>
           
           <p className="text-center text-sm text-gray-500 mt-4">
-            Already have an account? <Link to="/login" className="text-orange-600 font-bold hover:underline">Sign In</Link>
+            Already have an account? <Link to="/login" className="text-purple-700 font-bold hover:underline">Sign In</Link>
           </p>
           
-          {form.role === 'seller' && (
-            <div className="mt-4 p-3 bg-yellow-50 rounded-lg text-xs text-yellow-700">
-              <p>⚠️ <strong>Note:</strong> Seller accounts require admin approval before listing products.</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
   )
+}
+
+// Seller application is a deliberate step after normal account creation.
+const BecomeSellerPage = () => {
+  const { user, updateUser } = useAuth()
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ storeName: '', description: '', returnPolicy: '', pickupAddress: '' })
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState(null)
+  useEffect(() => { if (!user) { sessionStorage.setItem('returnAfterLogin', '/become-seller'); navigate('/login') } }, [user])
+  if (!user) return null
+  if (user.role === 'seller') return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-8 rounded-2xl text-center shadow"><span className="text-5xl">🏪</span><h1 className="text-2xl font-black mt-4">{user.sellerProfile?.isApproved ? 'Your seller store is active' : 'Application under review'}</h1><p className="text-sm text-gray-500 mt-2">{user.sellerProfile?.isApproved ? 'Open your dashboard to manage products and orders.' : 'An admin will review your store details before product listing is enabled.'}</p><button onClick={() => navigate(user.sellerProfile?.isApproved ? '/seller' : '/')} className="mt-5 px-6 py-3 bg-purple-600 text-white font-bold rounded-xl">Continue</button></div></div>
+
+  const submit = async e => {
+    e.preventDefault(); setLoading(true); setMessage(null)
+    try {
+      const data = await fetch(`${API_URL}/api/auth/become-seller`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify(form) }).then(r => r.json())
+      setLoading(false)
+      if (data.success) { updateUser(data.data.user); setMessage({ type: 'success', text: data.message }) }
+      else setMessage({ type: 'error', text: data.message || 'Unable to submit application' })
+    } catch { setLoading(false); setMessage({ type: 'error', text: 'Unable to connect to the server' }) }
+  }
+
+  return <div className="min-h-screen bg-gray-100 py-8"><div className="max-w-3xl mx-auto px-4"><div className="bg-gradient-to-r from-gray-950 to-purple-950 text-white p-7 rounded-2xl mb-5"><span className="text-4xl">🚀</span><h1 className="text-3xl font-black mt-3">Become a FlexiaCart seller</h1><p className="text-gray-300 mt-2">Create a professional store after your normal account. Seller applications are reviewed before products can be listed.</p></div><form onSubmit={submit} className="bg-white border rounded-2xl p-5 sm:p-7 space-y-5">{message && <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{message.text}</div>}<div><label className="text-sm font-bold text-gray-700">Store name *</label><input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} minLength={3} maxLength={120} required className="w-full mt-1 px-4 py-3 border rounded-xl" placeholder="A unique public store name" /></div><div><label className="text-sm font-bold text-gray-700">What will you sell? *</label><textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} minLength={20} maxLength={1000} required rows={5} className="w-full mt-1 px-4 py-3 border rounded-xl" placeholder="Describe your products, location, fulfilment ability and customer service." /></div><div className="grid md:grid-cols-2 gap-4"><div><label className="text-sm font-bold text-gray-700">Return policy</label><textarea value={form.returnPolicy} onChange={e => setForm({...form, returnPolicy: e.target.value})} rows={3} className="w-full mt-1 px-4 py-3 border rounded-xl" placeholder="Truthful conditions for eligible returns" /></div><div><label className="text-sm font-bold text-gray-700">Safe pickup information</label><textarea value={form.pickupAddress} onChange={e => setForm({...form, pickupAddress: e.target.value})} rows={3} className="w-full mt-1 px-4 py-3 border rounded-xl" placeholder="Public pickup area; do not expose a private home address" /></div></div><div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800"><strong>Seller responsibility:</strong> use your own images, describe condition honestly, fulfil accepted orders, protect buyer data and comply with prohibited-item rules.</div><button disabled={loading || message?.type === 'success'} className="w-full py-4 bg-purple-600 text-white font-black rounded-xl disabled:opacity-50">{loading ? 'Submitting...' : message?.type === 'success' ? 'Application submitted' : 'Submit Seller Application'}</button></form></div></div>
 }
 
 // Seller Dashboard with Analytics, Products, Orders, Wallet & Withdraw
@@ -2861,7 +2840,7 @@ const SellerDashboard = () => {
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Products</p>
-              <p className="text-2xl sm:text-3xl font-bold text-orange-600">{products.length}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-purple-700">{products.length}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Wallet</p>
@@ -2885,7 +2864,7 @@ const SellerDashboard = () => {
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Amount to Withdraw (₦)</label>
                     <input type="number" min={walletData.minimumWithdrawal || 5000} max={walletData.availableBalance || 0} value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm"
+                      className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm"
                       placeholder="Enter amount" required />
                   </div>
                   <div className="bg-yellow-50 p-3 rounded-lg">
@@ -2917,17 +2896,17 @@ const SellerDashboard = () => {
                       <label className="text-sm font-bold text-gray-800">Product images * <span className="font-normal text-gray-500">({productImages.length}/6)</span></label>
                       <span className="text-xs text-gray-500">First image is the cover</span>
                     </div>
-                    <label className="block border-2 border-dashed border-orange-300 bg-orange-50/50 hover:bg-orange-50 rounded-xl p-5 text-center cursor-pointer">
+                    <label className="block border-2 border-dashed border-purple-300 bg-purple-50/50 hover:bg-purple-50 rounded-xl p-5 text-center cursor-pointer">
                       <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImageSelection} className="sr-only" disabled={productImages.length >= 6} />
                       <span className="text-3xl block mb-2">📷</span>
-                      <span className="text-sm font-bold text-orange-700">Click to upload multiple images</span>
+                      <span className="text-sm font-bold text-purple-800">Click to upload multiple images</span>
                       <span className="text-xs text-gray-500 block mt-1">JPG, PNG or WebP • maximum 6 images • 5MB each</span>
                       <span className="text-xs text-gray-500 block">Use bright, clear photos from different angles. Do not use screenshots with phone numbers.</span>
                     </label>
                     {productImages.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
                         {productImages.map((image, index) => (
-                          <div key={image.id} className={`relative rounded-xl overflow-hidden border-2 bg-gray-100 aspect-square ${index === 0 ? 'border-orange-500' : 'border-gray-200'}`}>
+                          <div key={image.id} className={`relative rounded-xl overflow-hidden border-2 bg-gray-100 aspect-square ${index === 0 ? 'border-purple-600' : 'border-gray-200'}`}>
                             <img src={image.preview} alt={`Upload preview ${index + 1}`} className="w-full h-full object-cover" />
                             <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-full">{index === 0 ? 'Cover' : `Image ${index + 1}`}</div>
                             <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex gap-1 justify-end">
@@ -2943,34 +2922,34 @@ const SellerDashboard = () => {
                   <section className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Product title *</label>
-                      <input value={productForm.title} onChange={e => setProductForm({...productForm, title: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Example: Samsung Galaxy A54 128GB – New" minLength={5} maxLength={180} required />
+                      <input value={productForm.title} onChange={e => setProductForm({...productForm, title: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="Example: Samsung Galaxy A54 128GB – New" minLength={5} maxLength={180} required />
                     </div>
                     <div>
                       <div className="flex justify-between"><label className="text-sm font-medium text-gray-700 mb-1 block">Detailed description *</label><span className="text-xs text-gray-400">{productForm.description.length}/5000</span></div>
-                      <textarea value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" rows={5} maxLength={5000} placeholder="Describe condition, size, colour, included accessories, defects, warranty and what makes the item useful..." required />
+                      <textarea value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" rows={5} maxLength={5000} placeholder="Describe condition, size, colour, included accessories, defects, warranty and what makes the item useful..." required />
                     </div>
                   </section>
 
                   <section className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Selling price (₦) *</label>
-                      <input type="number" min="1" value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="85000" required />
+                      <input type="number" min="1" value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="85000" required />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Original price (₦)</label>
-                      <input type="number" min="0" value={productForm.originalPrice} onChange={e => setProductForm({...productForm, originalPrice: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="100000" />
+                      <input type="number" min="0" value={productForm.originalPrice} onChange={e => setProductForm({...productForm, originalPrice: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="100000" />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Available stock *</label>
-                      <input type="number" min="0" max="99999" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="10" required />
+                      <input type="number" min="0" max="99999" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="10" required />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Seller location/state *</label>
-                      <input value={productForm.location} onChange={e => setProductForm({...productForm, location: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Example: Osun State" required />
+                      <input value={productForm.location} onChange={e => setProductForm({...productForm, location: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="Example: Osun State" required />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Category *</label>
-                      <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" required>
+                      <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" required>
                         <option value="phones-accessories">📱 Phones & Accessories</option>
                         <option value="electronics">🎧 Electronics</option>
                         <option value="fashion">👕 Fashion</option>
@@ -2987,22 +2966,22 @@ const SellerDashboard = () => {
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Condition *</label>
-                      <select value={productForm.condition} onChange={e => setProductForm({...productForm, condition: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" required>
+                      <select value={productForm.condition} onChange={e => setProductForm({...productForm, condition: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" required>
                         <option value="new">New</option><option value="used">Used</option><option value="refurbished">Refurbished</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Brand</label>
-                      <input value={productForm.brand} onChange={e => setProductForm({...productForm, brand: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="Samsung, Nike, Generic..." />
+                      <input value={productForm.brand} onChange={e => setProductForm({...productForm, brand: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="Samsung, Nike, Generic..." />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Search tags</label>
-                      <input value={productForm.tags} onChange={e => setProductForm({...productForm, tags: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none text-sm" placeholder="android, 5g, student phone" />
+                      <input value={productForm.tags} onChange={e => setProductForm({...productForm, tags: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="android, 5g, student phone" />
                     </div>
                   </section>
 
                   <section className="rounded-xl border border-gray-200 p-4">
-                    <div className="flex items-center justify-between mb-3"><div><h3 className="font-bold text-gray-900">📋 Specifications</h3><p className="text-xs text-gray-500">Add factual details buyers can compare.</p></div>{productSpecs.length < 20 && <button type="button" onClick={() => setProductSpecs(current => [...current, { name: '', value: '' }])} className="text-xs font-bold text-orange-600">+ Add row</button>}</div>
+                    <div className="flex items-center justify-between mb-3"><div><h3 className="font-bold text-gray-900">📋 Specifications</h3><p className="text-xs text-gray-500">Add factual details buyers can compare.</p></div>{productSpecs.length < 20 && <button type="button" onClick={() => setProductSpecs(current => [...current, { name: '', value: '' }])} className="text-xs font-bold text-purple-700">+ Add row</button>}</div>
                     <div className="space-y-2">{productSpecs.map((spec, index) => <div key={index} className="grid grid-cols-[1fr_1.5fr_auto] gap-2"><input value={spec.name} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} placeholder="e.g. Colour" className="px-3 py-2 border rounded-lg text-sm" /><input value={spec.value} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, value: e.target.value } : item))} placeholder="e.g. Midnight Black" className="px-3 py-2 border rounded-lg text-sm" /><button type="button" onClick={() => setProductSpecs(current => current.length === 1 ? [{ name: '', value: '' }] : current.filter((_, i) => i !== index))} className="px-2 text-red-500">✕</button></div>)}</div>
                     <div className="grid sm:grid-cols-3 gap-3 mt-4"><div><label className="text-xs text-gray-600">Warranty</label><input value={productForm.warranty} onChange={e => setProductForm({...productForm, warranty: e.target.value})} placeholder="e.g. 6 months seller warranty" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div><div><label className="text-xs text-gray-600">Return terms</label><input value={productForm.returnPolicy} onChange={e => setProductForm({...productForm, returnPolicy: e.target.value})} placeholder="e.g. 3 days if defective" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div><div><label className="text-xs text-gray-600">Pickup location</label><input value={productForm.pickupLocation} onChange={e => setProductForm({...productForm, pickupLocation: e.target.value})} placeholder="Public pickup area" className="w-full px-3 py-2 border rounded-lg text-sm mt-1" /></div></div>
                   </section>
@@ -3038,16 +3017,16 @@ const SellerDashboard = () => {
           {/* Tabs */}
           <div className="bg-white rounded-lg border border-gray-200">
             <div className="flex border-b overflow-x-auto">
-              <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📊 Overview</button>
-              <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📦 Products ({products.length})</button>
-              <button onClick={() => setActiveTab('orders')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'orders' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📝 Orders ({orders.length})</button>
-              <button onClick={() => setActiveTab('wallet')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'wallet' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💰 Wallet</button>
+              <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📊 Overview</button>
+              <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📦 Products ({products.length})</button>
+              <button onClick={() => setActiveTab('orders')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'orders' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📝 Orders ({orders.length})</button>
+              <button onClick={() => setActiveTab('wallet')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'wallet' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💰 Wallet</button>
             </div>
             
             <div className="p-4 sm:p-6">
               {activeTab === 'overview' && (
                 <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
-                  <div className="p-4 bg-orange-50 rounded-lg">
+                  <div className="p-4 bg-purple-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2">🚀 Quick Actions</h3>
                     <div className="space-y-2">
                       <button onClick={() => setShowAddProduct(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">➕ Add New Product</button>
@@ -3147,7 +3126,7 @@ const SellerDashboard = () => {
               )}
 
               {activeTab === 'wallet' && <div>
-                <div className="grid sm:grid-cols-3 gap-3 mb-6"><div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-5 rounded-xl"><p className="text-xs opacity-80">Available to withdraw</p><p className="text-3xl font-black mt-1">₦{(walletData.availableBalance || 0).toLocaleString()}</p></div><div className="bg-orange-50 border border-orange-200 p-5 rounded-xl"><p className="text-xs text-orange-700">Pending until delivery</p><p className="text-2xl font-black text-orange-900 mt-1">₦{(walletData.pendingBalance || 0).toLocaleString()}</p></div><div className="bg-green-50 border border-green-200 p-5 rounded-xl"><p className="text-xs text-green-700">Total withdrawn</p><p className="text-2xl font-black text-green-900 mt-1">₦{(walletData.totalWithdrawn || 0).toLocaleString()}</p></div></div>
+                <div className="grid sm:grid-cols-3 gap-3 mb-6"><div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-5 rounded-xl"><p className="text-xs opacity-80">Available to withdraw</p><p className="text-3xl font-black mt-1">₦{(walletData.availableBalance || 0).toLocaleString()}</p></div><div className="bg-purple-50 border border-purple-200 p-5 rounded-xl"><p className="text-xs text-purple-800">Pending until delivery</p><p className="text-2xl font-black text-purple-950 mt-1">₦{(walletData.pendingBalance || 0).toLocaleString()}</p></div><div className="bg-green-50 border border-green-200 p-5 rounded-xl"><p className="text-xs text-green-700">Total withdrawn</p><p className="text-2xl font-black text-green-900 mt-1">₦{(walletData.totalWithdrawn || 0).toLocaleString()}</p></div></div>
                 <div className="grid md:grid-cols-2 gap-4 mb-6"><div className="p-4 border rounded-xl"><h4 className="font-bold">🏦 Payout bank</h4>{walletData.bankAccount ? <div className="text-sm mt-2"><p>{walletData.bankAccount.bankName}</p><p className="font-bold">{walletData.bankAccount.accountName}</p><p>******{walletData.bankAccount.accountNumber?.slice(-4)}</p><span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full ${walletData.bankAccount.isVerified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{walletData.bankAccount.isVerified ? '✓ Verified' : 'Awaiting admin verification'}</span></div> : <p className="text-sm text-gray-500 mt-2">No payout account saved.</p>}<button onClick={addBankAccount} className="mt-3 text-sm font-bold text-blue-600">{walletData.bankAccount ? 'Change account' : 'Add bank account'}</button></div><div className="p-4 border rounded-xl"><h4 className="font-bold">💵 Manual withdrawal</h4><p className="text-xs text-gray-500 mt-2">Minimum ₦{(walletData.minimumWithdrawal || 5000).toLocaleString()}. Requested funds are reserved until admin pays, rejects or records a failure.</p><button onClick={() => setShowWithdraw(true)} disabled={!walletData.bankAccount?.isVerified || walletData.availableBalance < walletData.minimumWithdrawal} className="w-full mt-4 py-3 bg-blue-600 text-white font-bold rounded-lg disabled:opacity-40">Request Withdrawal</button></div></div>
                 <h4 className="font-bold mb-3">Withdrawal history</h4>{walletData.withdrawals?.length ? <div className="space-y-2">{walletData.withdrawals.map(item => <div key={item._id} className="border rounded-lg p-3 flex justify-between gap-3"><div><p className="font-bold text-sm">₦{item.amount?.toLocaleString()}</p><p className="text-xs text-gray-500">{item.reference}</p></div><div className="text-right"><span className="text-xs font-bold capitalize">{item.status}</span>{item.amountTransferred != null && <p className="text-xs text-green-600">Transferred ₦{item.amountTransferred.toLocaleString()}</p>}</div></div>)}</div> : <p className="text-sm text-gray-500">No withdrawal requests yet.</p>}
               </div>}
@@ -3389,7 +3368,7 @@ const AdminDashboard = () => {
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">Orders</p>
-              <p className="text-2xl sm:text-3xl font-bold text-orange-600">{stats?.stats?.totalOrders || 0}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-purple-700">{stats?.stats?.totalOrders || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
               <p className="text-gray-500 text-xs sm:text-sm">⚠️ Pending</p>
@@ -3399,21 +3378,21 @@ const AdminDashboard = () => {
 
           <div className="bg-white rounded-lg border border-gray-200">
             <div className="flex border-b overflow-x-auto">
-              <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📊 Overview</button>
-              <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📦 Pending Products ({pendingProducts.length})</button>
-              <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
-              <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🚨 Order Reports ({reports.length})</button>
-              <button onClick={() => setActiveTab('listing-reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'listing-reports' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>⚑ Listing Reports ({productReports.length})</button>
-              {user.role === 'admin' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
-              {user.role === 'admin' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
-              <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>💬 Support Chats</button>
-              {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
+              <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📊 Overview</button>
+              <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📦 Pending Products ({pendingProducts.length})</button>
+              <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
+              <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🚨 Order Reports ({reports.length})</button>
+              <button onClick={() => setActiveTab('listing-reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'listing-reports' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>⚑ Listing Reports ({productReports.length})</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
+              {user.role === 'admin' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
+              <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💬 Support Chats</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
             
             <div className="p-4 sm:p-6">
               {activeTab === 'overview' && (
                 <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
-                  <div className="p-4 bg-orange-50 rounded-lg">
+                  <div className="p-4 bg-purple-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2 text-sm sm:text-base">📋 Pending Actions</h3>
                     <div className="space-y-2 text-sm">
                       <p>• {pendingProducts.length} products awaiting approval</p>
@@ -3423,7 +3402,7 @@ const AdminDashboard = () => {
                   </div>
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2 text-sm sm:text-base">📊 Quick Stats</h3>
-                    <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>Campus Market commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>
+                    <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>FlexiaCart commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>
                   </div>
                 </div>
               )}
@@ -3524,7 +3503,7 @@ const AdminDashboard = () => {
                         <div key={ticket._id} className="border rounded-xl p-4">
                           <div className="flex justify-between gap-3 flex-wrap"><div><p className="font-bold text-sm">{ticket.subject}</p><p className="text-xs text-gray-500">{ticket.user?.name} • {ticket.user?.email} • #{ticket._id.slice(-6).toUpperCase()}</p></div><span className={`text-xs px-2 py-1 h-fit rounded-full ${ticket.priority === 'high' || ticket.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{ticket.status} / {ticket.priority}</span></div>
                           <p className="text-sm text-gray-700 mt-3 whitespace-pre-line bg-gray-50 p-3 rounded-lg max-h-36 overflow-y-auto">{ticket.message}</p>
-                          {ticket.replies?.length > 0 && <div className="mt-3 space-y-2">{ticket.replies.slice(-4).map(reply => <div key={reply._id} className={`text-xs p-2 rounded-lg ${reply.from?.role === 'admin' || reply.from?.role === 'moderator' ? 'bg-green-50 text-green-800 ml-5' : 'bg-orange-50 text-orange-800 mr-5'}`}><strong>{reply.from?.name || 'User'}:</strong> {reply.message}</div>)}</div>}
+                          {ticket.replies?.length > 0 && <div className="mt-3 space-y-2">{ticket.replies.slice(-4).map(reply => <div key={reply._id} className={`text-xs p-2 rounded-lg ${reply.from?.role === 'admin' || reply.from?.role === 'moderator' ? 'bg-green-50 text-green-800 ml-5' : 'bg-purple-50 text-purple-900 mr-5'}`}><strong>{reply.from?.name || 'User'}:</strong> {reply.message}</div>)}</div>}
                           <div className="flex items-center justify-between gap-2 mt-3 flex-wrap"><p className="text-xs text-gray-400">{new Date(ticket.updatedAt || ticket.createdAt).toLocaleString()}</p><div className="flex gap-2"><button onClick={() => handleSupportReply(ticket)} disabled={ticket.status === 'closed'} className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg disabled:opacity-40">Reply</button>{ticket.status !== 'resolved' && <button onClick={() => handleTicketStatus(ticket, 'resolved')} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg">Resolve</button>}{ticket.status !== 'closed' && <button onClick={() => handleTicketStatus(ticket, 'closed')} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg">Close</button>}</div></div>
                         </div>
                       ))}
@@ -3625,8 +3604,8 @@ const ProfilePage = () => {
           
           <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 mb-4 sm:mb-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 sm:w-20 h-16 sm:h-20 bg-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl sm:text-3xl font-bold text-orange-600">{user.name?.charAt(0)?.toUpperCase() || 'U'}</span>
+              <div className="w-16 sm:w-20 h-16 sm:h-20 bg-purple-100 rounded-full flex items-center justify-center">
+                <span className="text-2xl sm:text-3xl font-bold text-purple-700">{user.name?.charAt(0)?.toUpperCase() || 'U'}</span>
               </div>
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-gray-800">{user.name}</h2>
@@ -3643,12 +3622,12 @@ const ProfilePage = () => {
 
           <div className="bg-white rounded-lg border border-gray-200 mb-4 sm:mb-6">
             <div className="flex border-b">
-              <button onClick={() => setActiveTab('info')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'info' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📝 Personal Info</button>
-              <button onClick={() => setActiveTab('address')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'address' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>📍 Address</button>
+              <button onClick={() => setActiveTab('info')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'info' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📝 Personal Info</button>
+              <button onClick={() => setActiveTab('address')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'address' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📍 Address</button>
               {user.role === 'seller' && (
-                <button onClick={() => setActiveTab('store')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'store' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🏪 Store</button>
+                <button onClick={() => setActiveTab('store')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'store' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏪 Store</button>
               )}
-              <button onClick={() => setActiveTab('security')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'security' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500'}`}>🔒 Security</button>
+              <button onClick={() => setActiveTab('security')} className={`px-4 sm:px-6 py-3 font-medium text-sm ${activeTab === 'security' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🔒 Security</button>
             </div>
             
             <div className="p-4 sm:p-6">
@@ -3656,7 +3635,7 @@ const ProfilePage = () => {
                 <form onSubmit={handleUpdate} className="space-y-3 sm:space-y-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Full Name</label>
-                    <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                    <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Email (read-only)</label>
@@ -3664,10 +3643,10 @@ const ProfilePage = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
-                    <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="09051103883" />
+                    <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="09051103883" />
                   </div>
                   {user.referralCode && <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg"><p className="text-xs text-purple-700">Your referral code</p><div className="flex items-center justify-between gap-2 mt-1"><strong className="text-purple-900 tracking-wider">{user.referralCode}</strong><button type="button" onClick={() => { navigator.clipboard.writeText(user.referralCode); setToast({ message: 'Referral code copied', type: 'success' }) }} className="text-xs font-bold text-purple-700">Copy</button></div><p className="text-[10px] text-purple-600 mt-1">Rewards activate only after a referred user completes a verified paid order.</p></div>}
-                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Profile'}</button>
+                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Profile'}</button>
                 </form>
               )}
               
@@ -3675,19 +3654,19 @@ const ProfilePage = () => {
                 <form onSubmit={handleUpdate} className="space-y-3 sm:space-y-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Street Address</label>
-                    <input value={form.street} onChange={e => setForm({...form, street: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                    <input value={form.street} onChange={e => setForm({...form, street: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                   </div>
                   <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">City</label>
-                      <input value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                      <input value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">State</label>
-                      <input value={form.state} onChange={e => setForm({...form, state: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" />
+                      <input value={form.state} onChange={e => setForm({...form, state: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" />
                     </div>
                   </div>
-                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">
+                  <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm sm:text-base">
                     {loading ? 'Updating...' : '✓ Update Address'}
                   </button>
                 </form>
@@ -3697,13 +3676,13 @@ const ProfilePage = () => {
                 <form onSubmit={handleUpdate} className="space-y-3 sm:space-y-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Store Name</label>
-                    <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-orange-500 focus:outline-none text-sm" placeholder="Your store/business name" />
+                    <input value={form.storeName} onChange={e => setForm({...form, storeName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Your store/business name" />
                   </div>
                   <div><label className="text-sm font-medium text-gray-700 mb-1 block">Store Description</label><textarea value={form.storeDescription} onChange={e => setForm({...form, storeDescription: e.target.value})} rows={4} maxLength={1000} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="Tell buyers what your store sells and why they can trust your service." /></div>
                   <div><label className="text-sm font-medium text-gray-700 mb-1 block">Store Return Policy</label><textarea value={form.returnPolicy} onChange={e => setForm({...form, returnPolicy: e.target.value})} rows={3} maxLength={1500} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="State truthful return conditions and time limits." /></div>
                   <div><label className="text-sm font-medium text-gray-700 mb-1 block">Pickup Information</label><input value={form.pickupAddress} onChange={e => setForm({...form, pickupAddress: e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="Safe public pickup area (do not publish a private home address)" /></div>
                   <div className="bg-blue-50 p-3 rounded-lg"><p className="text-xs text-blue-700">📋 These details appear on your public, shareable store page. Only publish information you can honour.</p></div>
-                  <div className="flex flex-wrap gap-2"><button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Store'}</button>{user.sellerProfile?.isApproved && <button type="button" onClick={() => navigate(`/stores/${user._id}`)} className="px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-sm">View Public Store</button>}</div>
+                  <div className="flex flex-wrap gap-2"><button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Store'}</button>{user.sellerProfile?.isApproved && <button type="button" onClick={() => navigate(`/stores/${user._id}`)} className="px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-sm">View Public Store</button>}</div>
                 </form>
               )}
               
@@ -3731,7 +3710,7 @@ const ProfilePage = () => {
 const InformationPage = ({ type }) => {
   const pages = {
     about: {
-      icon: '🇳🇬', title: 'About Campus Market', intro: 'A growing multi-vendor marketplace built for campus communities and open to buyers and sellers across Nigeria.',
+      icon: '🇳🇬', title: 'About FlexiaCart', intro: 'A growing multi-vendor marketplace built for local communities and open to buyers and sellers across Nigeria.',
       sections: [
         ['Our purpose', 'We help local sellers present products professionally, reach customers outside their immediate community and manage enquiries, orders and delivery information in one place.'],
         ['Who can use it', 'Students, staff, families, professionals, independent sellers and shoppers from any Nigerian state may use the marketplace, subject to account and listing rules.'],
@@ -3739,12 +3718,12 @@ const InformationPage = ({ type }) => {
       ]
     },
     terms: {
-      icon: '📄', title: 'Terms of Use', intro: 'These basic terms explain responsible use of Campus Market. They must be legally reviewed before full commercial launch.',
+      icon: '📄', title: 'Terms of Use', intro: 'These basic terms explain responsible use of FlexiaCart. They must be legally reviewed before full commercial launch.',
       sections: [
         ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
         ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
         ['Orders and payment', 'Until verified Flutterwave payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
-        ['Marketplace role', 'Campus Market connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
+        ['Marketplace role', 'FlexiaCart connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
         ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
       ]
     },
@@ -3771,11 +3750,49 @@ const InformationPage = ({ type }) => {
     safety: {
       icon: '🛡️', title: 'Marketplace Safety', intro: 'Use these rules for safer local and interstate transactions.',
       sections: [
-        ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. Campus Market support will not ask for them.'],
+        ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. FlexiaCart support will not ask for them.'],
         ['Pay safely', 'The current method is Pay on Delivery. Do not transfer to an account displayed in a screenshot, chat message or old payment page.'],
         ['Local pickup', 'Meet in a safe public location during daylight, tell someone where you are going and inspect the product before paying.'],
         ['Interstate delivery', 'Confirm seller identity, listing history, delivery method, tracking and return terms. Use tracked logistics where possible.'],
         ['Report suspicious activity', 'Use the order report or support chat for impersonation, counterfeit products, payment pressure, threats or requests to move a transaction outside the platform.']
+      ]
+    },
+    faq: {
+      icon: '❓', title: 'Frequently Asked Questions', intro: 'Quick answers about shopping, selling, delivery, payments and account safety.',
+      sections: [
+        ['How do I buy?', 'Create an account, add approved products to your cart, enter a delivery address and select an available payment method at checkout.'],
+        ['How do I become a seller?', 'Create a normal account first, then submit a seller application with your store details. Product listing begins after approval.'],
+        ['How is delivery calculated?', 'Each seller provides local and nationwide delivery charges. The final estimate uses seller location, destination and the products in the order.'],
+        ['Can I message a seller?', 'Yes. Open a product and choose Chat with Seller. Conversation history remains available in Messages.'],
+        ['How do I report a problem?', 'Use Report Listing for product concerns or Report Issue from My Orders for an order dispute.']
+      ]
+    },
+    prohibited: {
+      icon: '🚫', title: 'Prohibited Products', intro: 'Listings that create legal, safety or fraud risk are not allowed.',
+      sections: [
+        ['Illegal and dangerous goods', 'Weapons, illegal drugs, stolen goods, counterfeit currency, harmful chemicals and items prohibited by Nigerian law are not allowed.'],
+        ['Counterfeit and deceptive items', 'Fake branded goods, forged documents, manipulated product claims and misleading condition descriptions may be removed.'],
+        ['Outside-payment manipulation', 'Listings must not pressure buyers to bypass marketplace safety, reveal OTPs or pay through suspicious accounts.'],
+        ['Enforcement', 'Reported or detected listings may be hidden while moderators investigate. Serious violations may result in account suspension.']
+      ]
+    },
+    sellerTerms: {
+      icon: '🏪', title: 'Seller Terms', intro: 'Sellers are responsible for accurate listings, fulfilment, buyer privacy and marketplace safety.',
+      sections: [
+        ['Listing accuracy', 'Use your own clear images and disclose condition, defects, stock, price, warranty, location and delivery terms truthfully.'],
+        ['Order fulfilment', 'Confirm only orders you can fulfil, dispatch within the stated processing period and provide accurate delivery updates.'],
+        ['Communication', 'Respond respectfully, keep order discussions in marketplace messages and never request passwords, OTPs or card credentials.'],
+        ['Fees and earnings', 'Applicable commission and payment fees must be shown transparently. Verified online earnings remain pending until delivery release conditions are met.'],
+        ['Policy enforcement', 'Repeated cancellations, counterfeit listings, fraud, abuse or unresolved disputes may lead to listing removal or account suspension.']
+      ]
+    },
+    contact: {
+      icon: '💬', title: 'Contact and Support', intro: 'Use the in-app support assistant for quick help and request a human when needed.',
+      sections: [
+        ['In-app support', 'The automated assistant handles common questions. Choose Talk to a Person to create a ticket for an administrator or moderator.'],
+        ['Order issues', 'Use My Orders to report delivery, product or refund problems so the report remains connected to the transaction.'],
+        ['Account safety', 'Support will never request your password, OTP, card PIN, CVV or bank login credentials.'],
+        ['Telephone', 'For published urgent support hours, use the official phone number shown on the marketplace.']
       ]
     }
   }
@@ -3795,44 +3812,65 @@ const InformationPage = ({ type }) => {
   )
 }
 
+// Mobile-first bottom navigation adapted from the earlier FlexiaCart concept.
+const MobileBottomNav = () => {
+  const { user } = useAuth()
+  const { summary } = useCart()
+  const { wishlist } = useWishlist()
+  const location = useLocation()
+  const active = path => location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+  const links = [
+    { to: '/', icon: '⌂', label: 'Home' },
+    { to: '/products', icon: '▦', label: 'Catalog' },
+    { to: '/wishlist', icon: '♡', label: 'Wishlist', count: wishlist.length },
+    { to: '/cart', icon: '🛍', label: 'Cart', count: summary.itemCount },
+    { to: user ? '/profile' : '/login', icon: '♙', label: user ? 'Account' : 'Log In' }
+  ]
+  return <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-slate-200 px-2 pt-2 pb-[calc(.5rem+env(safe-area-inset-bottom,0px))] shadow-[0_-8px_30px_rgba(15,23,42,.10)]"><div className="flex items-center justify-around">{links.map(item => <Link key={item.label} to={item.to} className={`relative flex flex-col items-center min-w-14 gap-0.5 text-[10px] font-bold ${active(item.to) ? 'text-purple-700' : 'text-slate-500'}`}><span className={`text-xl leading-none ${active(item.to) ? 'scale-110' : ''}`}>{item.icon}</span><span>{item.label}</span>{item.count > 0 && <span className="absolute -top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] flex items-center justify-center">{item.count}</span>}</Link>)}</div></nav>
+}
+
 // Footer
 const Footer = () => {
   const navigate = useNavigate()
   return (
-    <footer style={{ backgroundColor: colors.dark }} className="text-gray-300 py-8 sm:py-10">
+    <footer className="bg-[#0B0A16] text-slate-300 pt-12 sm:pt-16 pb-28 md:pb-12 border-t border-purple-950/50">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 sm:gap-8 mb-6 sm:mb-8">
-          <div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 sm:gap-8 mb-8">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="bg-white rounded px-2 py-1"><span style={{ color: colors.primary }} className="font-bold text-sm">CM</span></div>
-              <span className="font-bold text-white text-sm sm:text-base">Campus Market</span>
+              <img src="/logo.svg" alt="FlexiaCart" className="w-10 h-10" />
+              <div><span className="font-black text-white text-lg">Flexia<span className="text-purple-400">Cart</span><span className="text-amber-400">.</span></span><p className="text-[9px] uppercase tracking-wider text-slate-500">Shop More. Sell Smarter.</p></div>
             </div>
-            <p className="text-xs sm:text-sm">A growing Nigerian marketplace built for campus communities and open to shoppers nationwide.</p>
+            <p className="text-xs sm:text-sm text-slate-400">A flexible Nigerian marketplace connecting trusted sellers with local and nationwide buyers.</p>
           </div>
           <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Quick Links</h4>
             <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
-              <li><button onClick={() => navigate('/products')} className="hover:text-orange-400">All Products</button></li>
-              <li><button onClick={() => navigate('/wishlist')} className="hover:text-orange-400">Wishlist</button></li>
-              <li><button onClick={() => navigate('/orders')} className="hover:text-orange-400">My Orders</button></li>
+              <li><button onClick={() => navigate('/products')} className="hover:text-purple-400">All Products</button></li>
+              <li><button onClick={() => navigate('/wishlist')} className="hover:text-purple-400">Wishlist</button></li>
+              <li><button onClick={() => navigate('/orders')} className="hover:text-purple-400">My Orders</button></li>
             </ul>
           </div>
           <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Categories</h4>
             <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
-              <li><button onClick={() => navigate('/products?category=phones-accessories')} className="hover:text-orange-400">Phones</button></li>
-              <li><button onClick={() => navigate('/products?category=electronics')} className="hover:text-orange-400">Electronics</button></li>
-              <li><button onClick={() => navigate('/products?category=fashion')} className="hover:text-orange-400">Fashion</button></li>
+              <li><button onClick={() => navigate('/products?category=phones-accessories')} className="hover:text-purple-400">Phones</button></li>
+              <li><button onClick={() => navigate('/products?category=electronics')} className="hover:text-purple-400">Electronics</button></li>
+              <li><button onClick={() => navigate('/products?category=fashion')} className="hover:text-purple-400">Fashion</button></li>
             </ul>
           </div>
           <div>
             <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Help & Policies</h4>
             <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
-              <li><button onClick={() => navigate('/about')} className="hover:text-orange-400">About Us</button></li>
-              <li><button onClick={() => navigate('/safety')} className="hover:text-orange-400">Marketplace Safety</button></li>
-              <li><button onClick={() => navigate('/returns')} className="hover:text-orange-400">Returns & Disputes</button></li>
-              <li><button onClick={() => navigate('/privacy')} className="hover:text-orange-400">Privacy</button></li>
-              <li><button onClick={() => navigate('/terms')} className="hover:text-orange-400">Terms</button></li>
+              <li><button onClick={() => navigate('/about')} className="hover:text-amber-400">About Us</button></li>
+              <li><button onClick={() => navigate('/faq')} className="hover:text-amber-400">FAQ</button></li>
+              <li><button onClick={() => navigate('/contact')} className="hover:text-amber-400">Contact & Support</button></li>
+              <li><button onClick={() => navigate('/safety')} className="hover:text-amber-400">Marketplace Safety</button></li>
+              <li><button onClick={() => navigate('/prohibited-items')} className="hover:text-amber-400">Prohibited Products</button></li>
+              <li><button onClick={() => navigate('/seller-terms')} className="hover:text-amber-400">Seller Terms</button></li>
+              <li><button onClick={() => navigate('/returns')} className="hover:text-amber-400">Returns & Disputes</button></li>
+              <li><button onClick={() => navigate('/privacy')} className="hover:text-amber-400">Privacy</button></li>
+              <li><button onClick={() => navigate('/terms')} className="hover:text-amber-400">Terms</button></li>
             </ul>
           </div>
           <div>
@@ -3845,7 +3883,7 @@ const Footer = () => {
           </div>
         </div>
         <div className="border-t border-gray-700 pt-6 text-center text-xs sm:text-sm">
-          <p>© {new Date().getFullYear()} Campus Market. All rights reserved. | 🇳🇬 Open to buyers and sellers across Nigeria | 🔒 SSL Protected</p>
+          <p>© {new Date().getFullYear()} FlexiaCart. All rights reserved. | 🇳🇬 Open to buyers and sellers across Nigeria | 🔒 SSL Protected</p>
         </div>
       </div>
     </footer>
@@ -3861,7 +3899,7 @@ function App() {
           <NotificationProvider>
             <ChatProvider>
               <CartProvider>
-                <div className="min-h-screen flex flex-col bg-gray-100">
+                <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
                   <ScrollToTop />
                   <Header />
                   <main className="flex-1">
@@ -3879,11 +3917,16 @@ function App() {
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/become-seller" element={<BecomeSellerPage />} />
                       <Route path="/about" element={<InformationPage type="about" />} />
                       <Route path="/terms" element={<InformationPage type="terms" />} />
                       <Route path="/privacy" element={<InformationPage type="privacy" />} />
                       <Route path="/returns" element={<InformationPage type="returns" />} />
                       <Route path="/safety" element={<InformationPage type="safety" />} />
+                      <Route path="/faq" element={<InformationPage type="faq" />} />
+                      <Route path="/prohibited-items" element={<InformationPage type="prohibited" />} />
+                      <Route path="/seller-terms" element={<InformationPage type="sellerTerms" />} />
+                      <Route path="/contact" element={<InformationPage type="contact" />} />
                       <Route path="/seller" element={<SellerDashboard />} />
                       <Route path="/admin" element={<AdminDashboard />} />
                       <Route path="*" element={
@@ -3891,13 +3934,14 @@ function App() {
                           <div className="text-center">
                             <span className="text-6xl block mb-4">🔍</span>
                             <h1 className="text-2xl sm:text-4xl font-bold text-gray-400 mb-4">404 - Page Not Found</h1>
-                            <button onClick={() => window.location.href = '/'} className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600">Go to Homepage</button>
+                            <button onClick={() => window.location.href = '/'} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700">Go to Homepage</button>
                           </div>
                         </div>
                       } />
                     </Routes>
                   </main>
                   <Footer />
+                  <MobileBottomNav />
                   <SupportChat />
                 </div>
               </CartProvider>
