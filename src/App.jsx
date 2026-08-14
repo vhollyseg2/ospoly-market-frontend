@@ -2693,25 +2693,54 @@ const SellerDashboard = () => {
     } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
-  const handleImageSelection = async (event) => {
-    const files = Array.from(event.target.files || [])
+  const optimizeProductImage = file => new Promise((resolve, reject) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowed.includes(file.type)) return reject(new Error(`${file.name}: use JPG, PNG or WebP. HEIC photos should be converted in your phone gallery first.`))
+    if (file.size > 15 * 1024 * 1024) return reject(new Error(`${file.name}: original image is larger than 15MB`))
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`${file.name}: could not read image`))
+    reader.onload = () => {
+      const image = new Image()
+      image.onerror = () => reject(new Error(`${file.name}: unsupported or damaged image`))
+      image.onload = () => {
+        const maxDimension = 1800
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
+        const width = Math.max(1, Math.round(image.width * scale))
+        const height = Math.max(1, Math.round(image.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        const context = canvas.getContext('2d')
+        context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height)
+        context.drawImage(image, 0, 0, width, height)
+        canvas.toBlob(blob => {
+          if (!blob) return reject(new Error(`${file.name}: image optimisation failed`))
+          const output = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() })
+          if (output.size > 5 * 1024 * 1024) return reject(new Error(`${file.name}: compressed image is still above 5MB`))
+          resolve(output)
+        }, 'image/jpeg', .84)
+      }
+      image.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+
+  const handleImageSelection = async event => {
+    const selected = Array.from(event.target.files || [])
     event.target.value = ''
-    if (!files.length) return
-    if (productImages.length + files.length > 6) {
-      setToast({ message: 'You can upload a maximum of 6 images', type: 'error' })
-      return
-    }
-    const invalid = files.find(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)
-    if (invalid) {
-      setToast({ message: 'Use JPG, PNG or WebP images up to 5MB each', type: 'error' })
-      return
-    }
-    const withPreviews = await Promise.all(files.map(file => new Promise(resolve => {
-      const reader = new FileReader()
-      reader.onload = () => resolve({ file, preview: reader.result, id: `${file.name}-${file.lastModified}-${Math.random()}` })
-      reader.readAsDataURL(file)
-    })))
-    setProductImages(current => [...current, ...withPreviews])
+    if (!selected.length) return
+    if (productImages.length + selected.length > 6) { setToast({ message: 'You can upload a maximum of 6 images', type: 'error' }); return }
+    setToast({ message: `Optimising ${selected.length} image(s) for faster upload...`, type: 'info' })
+    try {
+      const optimized = []
+      for (const file of selected) optimized.push(await optimizeProductImage(file))
+      const withPreviews = await Promise.all(optimized.map(file => new Promise(resolve => {
+        const reader = new FileReader()
+        reader.onload = () => resolve({ file, preview: reader.result, id: `${file.name}-${file.lastModified}-${Math.random()}`, originalSize: selected.find(item => item.name.replace(/\.[^.]+$/, '') === file.name.replace(/\.[^.]+$/, ''))?.size || file.size })
+        reader.readAsDataURL(file)
+      })))
+      setProductImages(current => [...current, ...withPreviews])
+      setToast({ message: `✓ ${withPreviews.length} image(s) ready to upload`, type: 'success' })
+    } catch (error) { setToast({ message: error.message || 'Image preparation failed', type: 'error' }) }
   }
 
   const removeProductImage = (id) => setProductImages(current => current.filter(image => image.id !== id))
@@ -2897,10 +2926,10 @@ const SellerDashboard = () => {
                       <span className="text-xs text-gray-500">First image is the cover</span>
                     </div>
                     <label className="block border-2 border-dashed border-purple-300 bg-purple-50/50 hover:bg-purple-50 rounded-xl p-5 text-center cursor-pointer">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImageSelection} className="sr-only" disabled={productImages.length >= 6} />
+                      <input type="file" accept="image/*" multiple onChange={handleImageSelection} className="sr-only" disabled={productImages.length >= 6} />
                       <span className="text-3xl block mb-2">📷</span>
                       <span className="text-sm font-bold text-purple-800">Click to upload multiple images</span>
-                      <span className="text-xs text-gray-500 block mt-1">JPG, PNG or WebP • maximum 6 images • 5MB each</span>
+                      <span className="text-xs text-gray-500 block mt-1">JPG, PNG or WebP • maximum 6 • automatically resized and compressed</span>
                       <span className="text-xs text-gray-500 block">Use bright, clear photos from different angles. Do not use screenshots with phone numbers.</span>
                     </label>
                     {productImages.length > 0 && (
@@ -3833,7 +3862,7 @@ const MobileBottomNav = () => {
 const Footer = () => {
   const navigate = useNavigate()
   return (
-    <footer className="bg-[#0B0A16] text-slate-300 pt-12 sm:pt-16 pb-28 md:pb-12 border-t border-purple-950/50">
+    <footer className="hidden md:block bg-[#0B0A16] text-slate-300 pt-12 sm:pt-16 pb-12 border-t border-purple-950/50">
       <div className="max-w-7xl mx-auto px-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 sm:gap-8 mb-8">
           <div className="col-span-2 md:col-span-1">
