@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext, useRef } from 'react'
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://ospoly-market-api.onrender.com'
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.flexiacart.top'
 
 const getProductImage = (product, index = 0) => {
   const image = product?.images?.[index]
