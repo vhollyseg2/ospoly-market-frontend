@@ -7,4 +7,4 @@ Disallow: /profile
 Disallow: /messages
 Disallow: /payment/
 
-Sitemap: https://ospoly-market-frontend.vercel.app/sitemap.xml
+Sitemap: https://www.flexiacart.top/sitemap.xml
