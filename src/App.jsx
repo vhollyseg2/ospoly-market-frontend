@@ -701,8 +701,7 @@ const WishlistButton = ({ product, className = '' }) => {
   )
 }
 
-// Safe interim checkout confirmation.
-// Online card/transfer payments remain disabled until verified Flutterwave live payments are approved and enabled.
+// Pay-on-delivery confirmation. Online payment availability is determined securely by the backend.
 const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess }) => {
   const { isSingleMerchant } = usePlatform()
   if (!isOpen) return null
@@ -718,7 +717,7 @@ const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess 
         <div className="my-5 rounded-xl bg-purple-50 border border-purple-200 p-4">
           <p className="text-sm font-bold text-purple-950">Temporary payment method: Pay on Delivery</p>
           <p className="text-xs text-purple-900 mt-2 leading-relaxed">
-            Online card, USSD and bank-transfer payments are not active yet. Do not transfer money to any account shown outside the official Flutterwave checkout. Confirm the item and seller before paying on delivery.
+            This order uses Pay on Delivery. Do not transfer money to an account sent in a chat or screenshot. Confirm the item before paying on delivery.
           </p>
         </div>
 
@@ -2124,10 +2123,19 @@ const CheckoutPage = () => {
   const [pendingOrderAmount, setPendingOrderAmount] = useState(0)
   const [orderItems, setOrderItems] = useState([])
   const [paymentMethod, setPaymentMethod] = useState('pay_on_delivery')
-  const [paymentConfig, setPaymentConfig] = useState({ paymentMode: 'not-configured' })
+  const [paymentConfig, setPaymentConfig] = useState({ paymentMode: 'not-configured', available: false, notice: 'Checking secure payment availability…' })
   const navigate = useNavigate()
 
-  useEffect(() => { fetch(`${API_URL}/api/health`).then(r => r.json()).then(data => { setPaymentConfig(data); if (data.paymentMode === 'test' || data.paymentMode === 'live') setPaymentMethod('flutterwave') }).catch(() => {}) }, [])
+  useEffect(() => {
+    fetch(`${API_URL}/api/payments/config`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      .then(r => r.json())
+      .then(data => {
+        const config = data.success ? data.data : { paymentMode: 'not-configured', available: false, notice: data.message || 'Online payment is unavailable.' }
+        setPaymentConfig(config)
+        setPaymentMethod(config.available ? 'flutterwave' : 'pay_on_delivery')
+      })
+      .catch(() => setPaymentConfig({ paymentMode: 'not-configured', available: false, notice: 'Could not check online payment availability. Use Pay on Delivery.' }))
+  }, [])
 
   if (!user) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><h2 className="text-2xl">Please sign in</h2></div>
   if (items.length === 0) return (
@@ -2218,10 +2226,10 @@ const CheckoutPage = () => {
               </div>
               
               <div className="space-y-2 mb-4">
-                <button onClick={() => setPaymentMethod('flutterwave')} disabled={!['test','live'].includes(paymentConfig.paymentMode)} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'flutterwave' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'} disabled:opacity-50`}><p className="font-bold text-sm">💳 Pay securely with Flutterwave {paymentConfig.paymentMode === 'test' && <span className="text-[10px] bg-yellow-200 px-2 py-0.5 rounded-full">TEST MODE</span>}</p><p className="text-xs text-gray-500 mt-1">Card, bank transfer, USSD and enabled methods. Payment is verified by the backend.</p></button>
-                <button onClick={() => setPaymentMethod('pay_on_delivery')} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'pay_on_delivery' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}><p className="font-bold text-sm">🚚 Pay on Delivery</p><p className="text-xs text-gray-500 mt-1">Inspect or confirm the order before paying the seller.</p></button>
+                <button onClick={() => setPaymentMethod('flutterwave')} disabled={!paymentConfig.available} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'flutterwave' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'} disabled:opacity-50`}><p className="font-bold text-sm">💳 Pay securely with Flutterwave {paymentConfig.paymentMode === 'test' && <span className="text-[10px] bg-yellow-200 px-2 py-0.5 rounded-full">PRIVATE TEST</span>}</p><p className="text-xs text-gray-500 mt-1">{paymentConfig.paymentMode === 'test' ? 'Sandbox only: no real money moves, and the order must not be fulfilled.' : 'Card, bank transfer, USSD and enabled methods. Payment is verified by the backend.'}</p></button>
+                <button onClick={() => setPaymentMethod('pay_on_delivery')} className={`w-full p-3 border-2 rounded-xl text-left ${paymentMethod === 'pay_on_delivery' ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}><p className="font-bold text-sm">🚚 Pay on Delivery</p><p className="text-xs text-gray-500 mt-1">Inspect or confirm the order before paying FlexiaCart.</p></button>
               </div>
-              {paymentConfig.paymentMode === 'not-configured' && <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 text-xs text-yellow-800">Flutterwave has not been configured on Render, so only Pay on Delivery is available.</div>}
+              {paymentConfig.notice && <div className={`${paymentConfig.paymentMode === 'test' && paymentConfig.available ? 'bg-red-50 border-red-300 text-red-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800'} border p-3 rounded-lg mb-4 text-xs font-medium`}>{paymentConfig.notice}</div>}
               <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50">{loading ? 'Processing...' : paymentMethod === 'flutterwave' ? 'Continue to Flutterwave' : 'Place Pay-on-Delivery Order'}</button>
             </div>
           </div>
@@ -2244,9 +2252,9 @@ const PaymentCallbackPage = () => {
     const transactionId = params.get('transaction_id')
     if (status !== 'successful' || !txRef || !transactionId) { setState({ loading: false, success: false, message: status === 'cancelled' ? 'Payment was cancelled. Your order remains unpaid.' : 'Payment was not completed.' }); return }
     fetch(`${API_URL}/api/payments/flutterwave/verify?tx_ref=${encodeURIComponent(txRef)}&transaction_id=${encodeURIComponent(transactionId)}`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json()).then(data => { if (data.success) { clearCart(); setState({ loading: false, success: true, message: isSingleMerchant ? 'Payment verified. FlexiaCart will confirm stock, source, inspect and fulfil your order.' : 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
+      .then(r => r.json()).then(data => { if (data.success) { clearCart(); const isTest = data.data?.order?.paymentEnvironment === 'test'; setState({ loading: false, success: true, isTest, message: isTest ? 'TEST payment verified. No real money moved. Open My Orders and void this test order; do not fulfil it.' : isSingleMerchant ? 'Payment verified. FlexiaCart will confirm stock, source, inspect and fulfil your order.' : 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
   }, [])
-  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-purple-600 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? state.isTest ? 'Test payment verified' : 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-purple-600 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
 }
 
 // My Orders Page with Tracking and Reports
@@ -2297,9 +2305,10 @@ const MyOrdersPage = () => {
   }
 
   const cancelUnpaidOrder = async order => {
-    if (!window.confirm('Cancel this unpaid order and return its stock?')) return
+    const isTest = order.paymentEnvironment === 'test'
+    if (!window.confirm(isTest ? 'Void this sandbox test order and restore its stock? No real refund is needed.' : 'Cancel this unpaid order and return its stock?')) return
     const data = await fetch(`${API_URL}/api/orders/${order._id}/cancel`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Connection failed' }))
-    if (data.success) { setOrders(current => current.map(item => item._id === order._id ? { ...item, status: 'cancelled' } : item)); setToast({ message: data.message, type: 'success' }) }
+    if (data.success) { setOrders(current => current.map(item => item._id === order._id ? { ...item, ...data.data.order } : item)); setToast({ message: data.message, type: 'success' }) }
     else setToast({ message: data.message || 'Unable to cancel order', type: 'error' })
   }
 
@@ -2341,7 +2350,7 @@ const MyOrdersPage = () => {
                   <div>
                     <p className="font-bold text-gray-800">Order #{order._id.slice(-8).toUpperCase()}</p>
                     <p className="text-xs sm:text-sm text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</p>
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${order.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.paymentStatus === 'paid' ? '✓ Payment verified' : order.paymentMethod === 'pay_on_delivery' ? 'Pay on Delivery' : 'Payment pending'}</span>
+                    {order.paymentEnvironment === 'test' ? <span className="inline-block mt-1 px-2 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700">TEST PAYMENT — NO REAL MONEY</span> : <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${order.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.paymentStatus === 'paid' ? '✓ Payment verified' : order.paymentMethod === 'pay_on_delivery' ? 'Pay on Delivery' : 'Payment pending'}</span>}
                     {order.transactionId && <p className="text-xs text-gray-400">TXN: {order.transactionId}</p>}
                   </div>
                   <span className={`px-3 sm:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-bold capitalize ${getStatusColor(order.status)}`}>
@@ -2376,11 +2385,11 @@ const MyOrdersPage = () => {
                   <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200">
                     📦 View Order Details
                   </button>
-                  {order.paymentMethod === 'flutterwave' && order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => retryFlutterwave(order)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded">Retry Flutterwave Payment</button>}
-                  {order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => cancelUnpaidOrder(order)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded">Cancel Unpaid Order</button>}
+                  {order.paymentMethod === 'flutterwave' && ['pending','failed'].includes(order.paymentStatus) && order.status === 'pending' && <button onClick={() => retryFlutterwave(order)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded">Retry Flutterwave Payment</button>}
+                  {order.status === 'pending' && (['pending','failed'].includes(order.paymentStatus) || order.paymentEnvironment === 'test') && <button onClick={() => cancelUnpaidOrder(order)} className={`px-4 py-2 text-xs font-bold rounded ${order.paymentEnvironment === 'test' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}>{order.paymentEnvironment === 'test' ? 'Void Test Order & Restore Stock' : 'Cancel Unpaid Order'}</button>}
                   {order.status === 'delivered' && <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200">✍️ Leave Review</button>}
                   {order.status === 'delivered' && order.paymentStatus === 'paid' && !order.buyerConfirmedDeliveryAt && <button onClick={() => confirmDelivery(order._id)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">{isSingleMerchant ? '✓ Confirm Delivery' : '✓ Confirm Delivery & Release Seller'}</button>}
-                  {order.status !== 'cancelled' && (
+                  {order.status !== 'cancelled' && order.paymentEnvironment !== 'test' && (
                     <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
                       🚨 Report Issue / Request Refund
                     </button>
@@ -3175,6 +3184,7 @@ const SellerDashboard = () => {
                             <div>
                               <p className="font-bold text-sm sm:text-base">#{order._id.slice(-8).toUpperCase()}</p>
                               <p className="text-xs sm:text-sm text-gray-500">{order.buyer?.name} | {order.buyer?.phone}</p>
+                              {order.paymentEnvironment === 'test' && <span className="inline-block mt-1 px-2 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700">TEST — DO NOT FULFIL</span>}
                             </div>
                             <div className="text-right">
                               <p className="font-bold text-sm sm:text-base">₦{(order.sellerAmount || order.finalAmount)?.toLocaleString()}</p>
@@ -3184,10 +3194,12 @@ const SellerDashboard = () => {
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <p className="text-xs sm:text-sm text-gray-500">{order.items.length} item(s)</p>
                             <div className="flex gap-2 flex-wrap">
-                              {order.status === 'pending' && <button onClick={() => handleUpdateStatus(order._id, 'confirmed')} className="px-4 py-2 bg-blue-500 text-white text-xs rounded-lg">✓ Confirm</button>}
-                              {order.status === 'confirmed' && <button onClick={() => handleUpdateStatus(order._id, 'processing')} className="px-4 py-2 bg-purple-500 text-white text-xs rounded-lg">📦 Process</button>}
-                              {order.status === 'processing' && <button onClick={() => handleUpdateStatus(order._id, 'shipped')} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg">🚚 Ship</button>}
-                              {order.status === 'shipped' && <button onClick={() => handleUpdateStatus(order._id, 'delivered')} className="px-4 py-2 bg-green-500 text-white text-xs rounded-lg">✓ Delivered</button>}
+                              {order.paymentEnvironment === 'test' ? <span className="text-xs font-bold text-red-700">Buyer must void this test order from My Orders.</span> : <>
+                                {order.status === 'pending' && <button onClick={() => handleUpdateStatus(order._id, 'confirmed')} className="px-4 py-2 bg-blue-500 text-white text-xs rounded-lg">✓ Confirm</button>}
+                                {order.status === 'confirmed' && <button onClick={() => handleUpdateStatus(order._id, 'processing')} className="px-4 py-2 bg-purple-500 text-white text-xs rounded-lg">📦 Process</button>}
+                                {order.status === 'processing' && <button onClick={() => handleUpdateStatus(order._id, 'shipped')} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg">🚚 Ship</button>}
+                                {order.status === 'shipped' && <button onClick={() => handleUpdateStatus(order._id, 'delivered')} className="px-4 py-2 bg-green-500 text-white text-xs rounded-lg">✓ Delivered</button>}
+                              </>}
                             </div>
                           </div>
                         </div>
