@@ -2,6 +2,25 @@ import { useState, useEffect, createContext, useContext, useRef } from 'react'
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.flexiacart.top'
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const nativeFetch = window.fetch.bind(window)
+// All API requests include the secure HttpOnly session cookie. Mutating requests
+// also carry the per-session CSRF token returned by the backend.
+const fetch = (input, options = {}) => {
+  const url = typeof input === 'string' ? input : input?.url || ''
+  const isApi = url.startsWith(API_URL)
+  if (!isApi) return nativeFetch(input, options)
+  const method = String(options.method || 'GET').toUpperCase()
+  const headers = new Headers(options.headers || {})
+  // Remove legacy JavaScript-readable bearer headers. Authentication now uses
+  // the HttpOnly cookie, including during the v8.2 → v8.3 rolling deployment.
+  headers.delete('Authorization')
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrf = sessionStorage.getItem('csrfToken')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+  }
+  return nativeFetch(input, { ...options, headers, credentials: 'include' })
+}
 
 const getProductImage = (product, index = 0) => {
   const image = product?.images?.[index]
@@ -96,69 +115,64 @@ const PlatformProvider = ({ children }) => {
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  
+
+  const acceptSession = data => {
+    localStorage.removeItem('accessToken')
+    if (data?.csrfToken) sessionStorage.setItem('csrfToken', data.csrfToken)
+    if (data?.user) setUser(data.user)
+  }
+
   useEffect(() => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) { setLoading(false); return }
-    
-    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    // v8.3 uses an HttpOnly cookie instead of a JavaScript-readable bearer token.
+    localStorage.removeItem('accessToken')
+    fetch(`${API_URL}/api/auth/me`)
       .then(r => r.json())
-      .then(d => { if (d.success) setUser(d.data.user) })
-      .catch(() => localStorage.removeItem('accessToken'))
+      .then(data => { if (data.success) acceptSession(data.data); else sessionStorage.removeItem('csrfToken') })
+      .catch(() => sessionStorage.removeItem('csrfToken'))
       .finally(() => setLoading(false))
   }, [])
-  
-  const login = async (email, password) => {
+
+  const runPrimaryLogin = async (path, body) => {
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ email, password }) 
-      })
-      const data = await res.json()
-      if (data.success) { 
-        localStorage.setItem('accessToken', data.data.accessToken)
-        setUser(data.data.user)
-        return { success: true } 
-      }
-      return { success: false, message: data.message }
-    } catch (e) { 
-      return { success: false, message: 'Cannot connect to server' } 
-    }
+      const data = await fetch(`${API_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+      if (data.success && data.data?.user) { acceptSession(data.data); return { success: true, authenticated: true } }
+      if (data.success && data.data?.mfaRequired) return { success: true, mfaRequired: true, challengeToken: data.data.challengeToken }
+      if (data.success && data.data?.mfaSetupRequired) return { success: true, mfaSetupRequired: true, setupToken: data.data.setupToken }
+      return { success: false, message: data.message, ...(data.data || {}) }
+    } catch { return { success: false, message: 'Cannot connect to the secure authentication service' } }
   }
-  
-  const register = async (userData) => {
+
+  const login = (email, password) => runPrimaryLogin('/api/auth/login', { email, password })
+  const googleLogin = credential => runPrimaryLogin('/api/auth/google', { credential })
+
+  const completeMfaLogin = async (challengeToken, code) => {
     try {
-      const res = await fetch(`${API_URL}/api/auth/register`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(userData) 
-      })
-      const data = await res.json()
-      if (data.success) { 
-        localStorage.setItem('accessToken', data.data.accessToken)
-        setUser(data.data.user)
-        return { success: true } 
-      }
+      const data = await fetch(`${API_URL}/api/auth/mfa/verify-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeToken, code }) }).then(r => r.json())
+      if (data.success) { acceptSession(data.data); return { success: true } }
       return { success: false, message: data.message }
-    } catch (e) { 
-      return { success: false, message: 'Cannot connect to server' } 
-    }
+    } catch { return { success: false, message: 'Cannot connect to the secure authentication service' } }
   }
-  
-  const logout = () => { 
+
+  const register = async userData => {
+    try {
+      const data = await fetch(`${API_URL}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) }).then(r => r.json())
+      return data.success ? { success: true, ...(data.data || {}), message: data.message } : { success: false, message: data.message }
+    } catch { return { success: false, message: 'Cannot connect to server' } }
+  }
+
+  const logout = async () => {
+    try { await fetch(`${API_URL}/api/auth/logout`, { method: 'POST' }) } catch {}
     localStorage.removeItem('accessToken')
+    sessionStorage.removeItem('csrfToken')
+    sessionStorage.removeItem('mfaChallengeToken')
+    sessionStorage.removeItem('mfaSetupToken')
     setUser(null)
-    window.location.href = '/' 
+    window.location.href = '/'
   }
-  
-  const updateUser = (updates) => setUser(prev => ({ ...prev, ...updates }))
-  
-  return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, isAuthenticated: !!user }}>
-      {children}
-    </AuthContext.Provider>
-  )
+
+  const updateUser = updates => setUser(prev => ({ ...prev, ...updates }))
+
+  return <AuthContext.Provider value={{ user, loading, login, googleLogin, completeMfaLogin, register, logout, updateUser, acceptSession, isAuthenticated: !!user }}>{children}</AuthContext.Provider>
 }
 
 // Wishlist Provider
@@ -2465,143 +2479,164 @@ const WishlistPage = () => {
   )
 }
 
-// Login Page
+// Production authentication components
+const GoogleSignInButton = ({ onCredential, onError, text = 'signin_with' }) => {
+  const container = useRef(null)
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return
+    let attempts = 0
+    const timer = setInterval(() => {
+      attempts += 1
+      if (window.google?.accounts?.id && container.current) {
+        clearInterval(timer)
+        window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: response => response?.credential ? onCredential(response.credential) : onError?.('Google did not return a secure credential'), auto_select: false, cancel_on_tap_outside: true })
+        container.current.innerHTML = ''
+        window.google.accounts.id.renderButton(container.current, { theme: 'outline', size: 'large', shape: 'rectangular', width: 350, text })
+      } else if (attempts >= 30) { clearInterval(timer); onError?.('Google sign-in could not load. Check your connection and try again.') }
+    }, 200)
+    return () => clearInterval(timer)
+  }, [onCredential, onError, text])
+  if (!GOOGLE_CLIENT_ID) return <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-lg">Google sign-in will appear after its Client ID is configured.</div>
+  return <div ref={container} className="flex justify-center min-h-[44px]" />
+}
+
+const storeAuthChallenge = (result, navigate) => {
+  if (result.mfaRequired) {
+    sessionStorage.setItem('mfaChallengeToken', result.challengeToken)
+    navigate('/mfa-challenge')
+    return true
+  }
+  if (result.mfaSetupRequired) {
+    sessionStorage.setItem('mfaSetupToken', result.setupToken)
+    navigate('/mfa-setup')
+    return true
+  }
+  return false
+}
+
 const LoginPage = () => {
-  const { login, user } = useAuth()
+  const { login, googleLogin, user } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [verificationRequired, setVerificationRequired] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-
   if (user) { window.location.href = '/'; return null }
 
-  const handleLogin = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    const result = await login(email, password)
-    setLoading(false)
+  const finish = result => {
+    if (storeAuthChallenge(result, navigate)) return
     if (result.success) {
       const returnTo = sessionStorage.getItem('returnAfterLogin') || '/'
       sessionStorage.removeItem('returnAfterLogin')
       navigate(returnTo)
-    } else setError(result.message || 'Invalid credentials')
+    } else { setError(result.message || 'Invalid credentials'); setVerificationRequired(Boolean(result.emailVerificationRequired)) }
   }
+  const handleLogin = async e => { e.preventDefault(); setError(''); setVerificationRequired(false); setLoading(true); const result = await login(email, password); setLoading(false); finish(result) }
+  const handleGoogle = async credential => { setError(''); setLoading(true); const result = await googleLogin(credential); setLoading(false); finish(result) }
 
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-        <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
-          <div className="bg-white rounded-lg w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <span style={{ color: colors.primary }} className="text-2xl font-bold">FC</span>
-          </div>
-          <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-          <p className="text-purple-100 text-sm mt-1">Sign in to your account</p>
-        </div>
-        
-        <div className="p-6">
-          {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm text-center">⚠️ {error}</div>}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Email Address</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="your@email.com" required />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Password</label>
-              <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="••••••••" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPassword ? '👁️' : '👁️‍🗨️'}</button>
-              </div>
-            </div>
-            <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm">
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
-          
-          <div className="flex items-center justify-between mt-4 text-sm">
-            <Link to="/register" className="text-purple-700 font-bold hover:underline">Create Account</Link>
-            <span className="text-gray-500">Use the Support button for login help</span>
-          </div>
-          
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-            🔒 Never share your password, OTP, card PIN or login code with a buyer, seller or support agent.
-          </div>
-        </div>
-      </div>
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+    <div style={{ backgroundColor: colors.primary }} className="p-8 text-center"><div className="bg-white rounded-xl w-16 h-16 mx-auto mb-4 flex items-center justify-center"><span style={{ color: colors.primary }} className="text-2xl font-black">FC</span></div><h1 className="text-2xl font-bold text-white">Welcome Back</h1><p className="text-purple-100 text-sm mt-1">Securely sign in to FlexiaCart</p></div>
+    <div className="p-6">
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm text-center">⚠️ {error}{verificationRequired && <div><Link to="/verify-email" onClick={() => sessionStorage.setItem('verificationEmail', email)} className="font-bold underline block mt-2">Resend verification email</Link></div>}</div>}
+      <GoogleSignInButton onCredential={handleGoogle} onError={setError} />
+      <div className="flex items-center gap-3 my-5"><div className="h-px bg-gray-200 flex-1"/><span className="text-xs text-gray-400">OR USE PASSWORD</span><div className="h-px bg-gray-200 flex-1"/></div>
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div><label className="text-sm font-medium text-gray-700 mb-1 block">Email Address</label><input type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="your@email.com" required /></div>
+        <div><div className="flex justify-between mb-1"><label className="text-sm font-medium text-gray-700">Password</label><Link to="/forgot-password" className="text-xs font-bold text-purple-700">Forgot password?</Link></div><div className="relative"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none text-sm" placeholder="••••••••••••" required /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPassword ? 'Hide' : 'Show'}</button></div></div>
+        <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50">{loading ? 'Checking securely…' : 'Sign In'}</button>
+      </form>
+      <div className="flex items-center justify-between mt-5 text-sm"><Link to="/register" className="text-purple-700 font-bold hover:underline">Create Account</Link><span className="text-gray-400">Protected login</span></div>
+      <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">🔒 FlexiaCart will never ask for your password, authenticator code, backup code, card PIN or OTP.</div>
     </div>
-  )
+  </div></div>
 }
 
-// Register Page
 const RegisterPage = () => {
-  const { register, user } = useAuth()
+  const { register, googleLogin, user } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', phone: '', referralCode: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
   if (user) { window.location.href = '/'; return null }
-
-  const handleRegister = async (e) => {
-    e.preventDefault()
-    setError('')
-    if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return }
-    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return }
-    setLoading(true)
-    const result = await register({...form, confirmPassword: undefined})
-    setLoading(false)
-    if (result.success) navigate('/')
-    else setError(result.message || 'Registration failed')
+  const handleRegister = async e => {
+    e.preventDefault(); setError('')
+    if (form.password !== form.confirmPassword) return setError('Passwords do not match')
+    if (form.password.length < 12 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/\d/.test(form.password) || !/[^A-Za-z0-9]/.test(form.password)) return setError('Use 12+ characters with uppercase, lowercase, a number and a symbol')
+    setLoading(true); const result = await register({ ...form, confirmPassword: undefined }); setLoading(false)
+    if (result.success) { sessionStorage.setItem('verificationEmail', form.email); navigate('/verify-email') } else setError(result.message || 'Registration failed')
   }
+  const handleGoogle = async credential => { setError(''); setLoading(true); const result = await googleLogin(credential); setLoading(false); if (storeAuthChallenge(result, navigate)) return; if (result.success) navigate('/'); else setError(result.message || 'Google registration failed') }
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"><div style={{ backgroundColor: colors.primary }} className="p-8 text-center"><h1 className="text-2xl font-bold text-white">Create Account</h1><p className="text-purple-100 text-sm mt-1">Verified access to FlexiaCart</p></div><div className="p-6">
+    {error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm text-center">⚠️ {error}</div>}
+    <GoogleSignInButton onCredential={handleGoogle} onError={setError} text="signup_with" />
+    <div className="flex items-center gap-3 my-5"><div className="h-px bg-gray-200 flex-1"/><span className="text-xs text-gray-400">OR REGISTER WITH EMAIL</span><div className="h-px bg-gray-200 flex-1"/></div>
+    <form onSubmit={handleRegister} className="space-y-3">
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Full Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" required /></div>
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Email Address *</label><input type="email" autoComplete="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" required /></div>
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label><input value={form.phone} onChange={e => setForm({...form, phone:e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" /></div>
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Referral Code (optional)</label><input value={form.referralCode} onChange={e => setForm({...form, referralCode:e.target.value.toUpperCase()})} className="w-full px-4 py-3 border rounded-lg text-sm uppercase" /></div>
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Strong Password *</label><input type="password" autoComplete="new-password" minLength={12} value={form.password} onChange={e => setForm({...form, password:e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" placeholder="12+ characters, number and symbol" required /></div>
+      <div><label className="text-sm font-medium text-gray-700 mb-1 block">Confirm Password *</label><input type="password" autoComplete="new-password" minLength={12} value={form.confirmPassword} onChange={e => setForm({...form, confirmPassword:e.target.value})} className="w-full px-4 py-3 border rounded-lg text-sm" required /></div>
+      <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg disabled:opacity-50">{loading ? 'Creating securely…' : 'Create & Verify Account'}</button>
+    </form><p className="text-center text-sm text-gray-500 mt-4">Already registered? <Link to="/login" className="text-purple-700 font-bold">Sign In</Link></p>
+  </div></div></div>
+}
 
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-        <div style={{ backgroundColor: colors.primary }} className="p-8 text-center">
-          <h1 className="text-2xl font-bold text-white">Create Account</h1>
-          <p className="text-purple-100 text-sm mt-1">Join FlexiaCart - It's Free!</p>
-        </div>
-        
-        <div className="p-6">
-          <div className="mb-5 bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-900">Create one account to shop, message sellers and track orders. You can apply to become a seller later from the account menu.</div>
-          {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm text-center">⚠️ {error}</div>}
-          <form onSubmit={handleRegister} className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Full Name *</label>
-              <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Your full name" required />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Email Address *</label>
-              <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" required />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
-              <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="09051103883" />
-            </div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Referral Code (optional)</label><input value={form.referralCode} onChange={e => setForm({...form, referralCode: e.target.value.toUpperCase()})} className="w-full px-4 py-3 border border-gray-300 rounded text-sm uppercase" placeholder="Enter a friend’s code" /></div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Password * (min 8 chars)</label>
-              <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Min 8 characters" required />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Confirm Password *</label>
-              <input type="password" value={form.confirmPassword} onChange={e => setForm({...form, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="Confirm password" required />
-            </div>
-            <button type="submit" disabled={loading} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm">
-              {loading ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
-          
-          <p className="text-center text-sm text-gray-500 mt-4">
-            Already have an account? <Link to="/login" className="text-purple-700 font-bold hover:underline">Sign In</Link>
-          </p>
-          
-        </div>
-      </div>
-    </div>
-  )
+const MfaChallengePage = () => {
+  const { completeMfaLogin } = useAuth()
+  const navigate = useNavigate()
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const submit = async e => { e.preventDefault(); setLoading(true); const result = await completeMfaLogin(sessionStorage.getItem('mfaChallengeToken'), code); setLoading(false); if (result.success) { sessionStorage.removeItem('mfaChallengeToken'); navigate('/') } else setError(result.message) }
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl"><div className="text-5xl text-center">🔐</div><h1 className="text-2xl font-black text-center mt-3">Authenticator verification</h1><p className="text-sm text-gray-500 text-center mt-2">Enter the current 6-digit code from your authenticator app, or one unused backup code.</p>{error && <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}<form onSubmit={submit} className="mt-5 space-y-4"><input autoFocus value={code} onChange={e => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" className="w-full px-4 py-4 border rounded-xl text-center text-xl tracking-widest" placeholder="123456" required /><button disabled={loading} className="w-full py-3 bg-purple-700 text-white font-bold rounded-xl disabled:opacity-50">{loading ? 'Verifying…' : 'Verify & Sign In'}</button></form><button onClick={() => navigate('/login')} className="w-full mt-3 text-sm text-gray-500">Return to login</button></div></div>
+}
+
+const MfaSetupPage = () => {
+  const { acceptSession } = useAuth()
+  const navigate = useNavigate()
+  const started = useRef(false)
+  const [setup, setSetup] = useState(null)
+  const [code, setCode] = useState('')
+  const [backupCodes, setBackupCodes] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const setupToken = sessionStorage.getItem('mfaSetupToken')
+  useEffect(() => {
+    if (started.current) return; started.current = true
+    if (!setupToken) { setError('Setup session missing. Sign in again.'); setLoading(false); return }
+    fetch(`${API_URL}/api/auth/mfa/bootstrap`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({setupToken}) }).then(r=>r.json()).then(data=>{ if(data.success)setSetup(data.data); else setError(data.message); setLoading(false) }).catch(()=>{setError('Could not start authenticator setup');setLoading(false)})
+  }, [])
+  const enable = async e => { e.preventDefault(); setLoading(true); const data=await fetch(`${API_URL}/api/auth/mfa/bootstrap/enable`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({setupToken,code})}).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}));setLoading(false);if(data.success){acceptSession(data.data);setBackupCodes(data.data.backupCodes);sessionStorage.removeItem('mfaSetupToken')}else setError(data.message) }
+  if (backupCodes) return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-lg w-full p-7 rounded-2xl shadow-xl"><h1 className="text-2xl font-black text-green-700">✓ Authenticator enabled</h1><p className="text-sm text-gray-600 mt-2">Save these one-time backup codes offline. Each can be used once. They will not be shown again.</p><div className="grid grid-cols-2 gap-2 mt-5 bg-gray-950 text-green-300 p-4 rounded-xl font-mono text-sm">{backupCodes.map(codeValue=><div key={codeValue}>{codeValue}</div>)}</div><button onClick={()=>navigator.clipboard.writeText(backupCodes.join('\n'))} className="w-full mt-4 py-3 bg-gray-100 font-bold rounded-xl">Copy backup codes</button><button onClick={()=>navigate('/profile')} className="w-full mt-3 py-3 bg-purple-700 text-white font-bold rounded-xl">I saved them — continue</button></div></div>
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl"><h1 className="text-2xl font-black text-center">Secure administrator setup</h1><p className="text-sm text-gray-500 text-center mt-2">Install Google Authenticator, Microsoft Authenticator or Authy, then scan this QR code.</p>{error && <div className="mt-4 bg-red-50 text-red-700 p-3 rounded-lg text-sm">{error}</div>}{loading && !setup ? <div className="py-10 text-center">Preparing encrypted setup…</div> : setup && <><img src={setup.qrCodeDataUrl} alt="Authenticator QR code" className="w-64 h-64 mx-auto mt-4 border rounded-xl"/><details className="mt-3 text-xs text-gray-500"><summary>Cannot scan? Show manual key</summary><code className="block break-all mt-2 bg-gray-100 p-3 rounded">{setup.manualKey}</code></details><form onSubmit={enable} className="mt-5 space-y-3"><input value={code} onChange={e=>setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" className="w-full px-4 py-4 border rounded-xl text-center text-xl tracking-widest" placeholder="Enter 6-digit code" required/><button disabled={loading} className="w-full py-3 bg-purple-700 text-white font-bold rounded-xl disabled:opacity-50">{loading?'Checking…':'Enable Authenticator'}</button></form></>}</div></div>
+}
+
+const ForgotPasswordPage = () => {
+  const [email,setEmail]=useState('');const [message,setMessage]=useState('');const [loading,setLoading]=useState(false)
+  const submit=async e=>{e.preventDefault();setLoading(true);const data=await fetch(`${API_URL}/api/auth/forgot-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}).then(r=>r.json()).catch(()=>({message:'Connection failed'}));setLoading(false);setMessage(data.message)}
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><form onSubmit={submit} className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl"><h1 className="text-2xl font-black">Reset your password</h1><p className="text-sm text-gray-500 mt-2">Enter your verified email. For privacy, the response is the same whether an account exists or not.</p>{message&&<div className="mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm">{message}</div>}<input type="email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full mt-5 px-4 py-3 border rounded-xl" placeholder="you@example.com" required/><button disabled={loading} className="w-full mt-3 py-3 bg-purple-700 text-white font-bold rounded-xl">{loading?'Sending…':'Send reset link'}</button><Link to="/login" className="block text-center mt-4 text-sm text-purple-700 font-bold">Return to login</Link></form></div>
+}
+
+const ResetPasswordPage = () => {
+  const navigate=useNavigate();const token=new URLSearchParams(window.location.search).get('token')||'';const [form,setForm]=useState({password:'',confirm:''});const [message,setMessage]=useState(null);const [loading,setLoading]=useState(false)
+  const submit=async e=>{e.preventDefault();if(form.password!==form.confirm)return setMessage({type:'error',text:'Passwords do not match'});setLoading(true);const data=await fetch(`${API_URL}/api/auth/reset-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,newPassword:form.password})}).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}));setLoading(false);setMessage({type:data.success?'success':'error',text:data.message});if(data.success)setTimeout(()=>navigate('/login'),1500)}
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><form onSubmit={submit} className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl"><h1 className="text-2xl font-black">Choose a new password</h1><p className="text-xs text-gray-500 mt-2">Use at least 12 characters with uppercase, lowercase, a number and a symbol.</p>{message&&<div className={`mt-4 p-3 rounded-lg text-sm ${message.type==='success'?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}`}>{message.text}</div>}<input type="password" minLength={12} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} className="w-full mt-5 px-4 py-3 border rounded-xl" placeholder="New password" required/><input type="password" minLength={12} value={form.confirm} onChange={e=>setForm({...form,confirm:e.target.value})} className="w-full mt-3 px-4 py-3 border rounded-xl" placeholder="Confirm new password" required/><button disabled={loading||!token} className="w-full mt-3 py-3 bg-purple-700 text-white font-bold rounded-xl disabled:opacity-50">{loading?'Resetting…':'Reset password'}</button></form></div>
+}
+
+const VerifyEmailPage = () => {
+  const navigate=useNavigate();const token=new URLSearchParams(window.location.search).get('token')||'';const [email,setEmail]=useState(sessionStorage.getItem('verificationEmail')||'');const [message,setMessage]=useState(token?'Verifying your email…':'Check your inbox, or request a new verification email.');const [success,setSuccess]=useState(false);const once=useRef(false)
+  useEffect(()=>{if(!token||once.current)return;once.current=true;fetch(`${API_URL}/api/auth/verify-email`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}).then(r=>r.json()).then(data=>{setMessage(data.message);setSuccess(data.success);if(data.success)setTimeout(()=>navigate('/login'),1500)}).catch(()=>setMessage('Verification service could not be reached'))},[token])
+  const resend=async e=>{e.preventDefault();const data=await fetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}).then(r=>r.json()).catch(()=>({message:'Connection failed'}));setMessage(data.message)}
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl text-center"><div className="text-5xl">{success?'✅':'✉️'}</div><h1 className="text-2xl font-black mt-3">Email verification</h1><p className="text-sm text-gray-600 mt-3">{message}</p>{!token&&<form onSubmit={resend} className="mt-5"><input type="email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full px-4 py-3 border rounded-xl" required/><button className="w-full mt-3 py-3 bg-purple-700 text-white font-bold rounded-xl">Resend verification</button></form>}<Link to="/login" className="block mt-4 text-sm text-purple-700 font-bold">Go to login</Link></div></div>
+}
+
+const ConfirmEmailChangePage = () => {
+  const navigate=useNavigate();const token=new URLSearchParams(window.location.search).get('token')||'';const [message,setMessage]=useState('Confirming your new email…');const [success,setSuccess]=useState(false);const once=useRef(false)
+  useEffect(()=>{if(once.current)return;once.current=true;fetch(`${API_URL}/api/auth/email-change/confirm`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}).then(r=>r.json()).then(data=>{setMessage(data.message);setSuccess(data.success);localStorage.removeItem('accessToken');sessionStorage.removeItem('csrfToken');if(data.success)setTimeout(()=>navigate('/login'),1800)}).catch(()=>setMessage('Confirmation service could not be reached'))},[])
+  return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-7 rounded-2xl shadow-xl text-center"><div className="text-5xl">{success?'✅':'🔐'}</div><h1 className="text-2xl font-black mt-3">Email change</h1><p className="text-sm text-gray-600 mt-3">{message}</p><Link to="/login" className="block mt-5 text-purple-700 font-bold">Go to login</Link></div></div>
 }
 
 // Seller application is a deliberate step after normal account creation.
@@ -3650,11 +3685,61 @@ const AdminDashboard = () => {
   )
 }
 
+const AccountSecurityPanel = ({ user, updateUser, setToast }) => {
+  const [mfaForm, setMfaForm] = useState({ currentPassword: '', code: '' })
+  const [mfaSetup, setMfaSetup] = useState(null)
+  const [backupCodes, setBackupCodes] = useState(null)
+  const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '', mfaCode: '' })
+  const [busy, setBusy] = useState(false)
+
+  const startMfa = async () => {
+    setBusy(true)
+    const data = await fetch(`${API_URL}/api/auth/mfa/setup`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({currentPassword:mfaForm.currentPassword}) }).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}))
+    setBusy(false)
+    if (data.success) setMfaSetup(data.data); else setToast({message:data.message,type:'error'})
+  }
+  const enableMfa = async () => {
+    setBusy(true)
+    const data = await fetch(`${API_URL}/api/auth/mfa/enable`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code:mfaForm.code}) }).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}))
+    setBusy(false)
+    if (data.success) {
+      if(data.data.csrfToken)sessionStorage.setItem('csrfToken',data.data.csrfToken)
+      updateUser(data.data.user);setBackupCodes(data.data.backupCodes);setMfaSetup(null);setToast({message:'Authenticator protection enabled',type:'success'})
+    } else setToast({message:data.message,type:'error'})
+  }
+  const linkGoogle = async credential => {
+    setBusy(true)
+    const data=await fetch(`${API_URL}/api/auth/google/link`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential})}).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}))
+    setBusy(false)
+    if(data.success){updateUser(data.data.user);setToast({message:data.message,type:'success'})}else setToast({message:data.message,type:'error'})
+  }
+  const requestEmailChange = async e => {
+    e.preventDefault();setBusy(true)
+    const data=await fetch(`${API_URL}/api/auth/email-change/request`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(emailForm)}).then(r=>r.json()).catch(()=>({success:false,message:'Connection failed'}))
+    setBusy(false);setToast({message:data.message,type:data.success?'success':'error'})
+    if(data.success)setEmailForm({newEmail:'',currentPassword:'',mfaCode:''})
+  }
+
+  return <div className="space-y-5 mb-6">
+    <div className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><h4 className="font-bold">Verified email</h4><p className="text-xs text-gray-500 mt-1">Current: {user.email}</p></div><span className={`h-fit text-[10px] font-bold px-2 py-1 rounded-full ${user.emailVerified?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>{user.emailVerified?'VERIFIED':'NOT VERIFIED'}</span></div>
+      <form onSubmit={requestEmailChange} className="mt-4 space-y-2"><p className="text-xs font-bold text-gray-700">Change to an email you control</p><input type="email" value={emailForm.newEmail} onChange={e=>setEmailForm({...emailForm,newEmail:e.target.value})} className="w-full px-3 py-2.5 border rounded-lg text-sm" placeholder="New Google/email address" required/><input type="password" value={emailForm.currentPassword} onChange={e=>setEmailForm({...emailForm,currentPassword:e.target.value})} className="w-full px-3 py-2.5 border rounded-lg text-sm" placeholder="Current FlexiaCart password" required/>{user.mfaEnabled&&<input inputMode="numeric" value={emailForm.mfaCode} onChange={e=>setEmailForm({...emailForm,mfaCode:e.target.value})} className="w-full px-3 py-2.5 border rounded-lg text-sm" placeholder="Current authenticator code" required/>}<button disabled={busy} className="px-4 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg disabled:opacity-50">Send confirmation to new email</button></form>
+    </div>
+
+    <div className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><h4 className="font-bold">Authenticator app (2FA)</h4><p className="text-xs text-gray-500 mt-1">Required for administrators and moderators.</p></div><span className={`h-fit text-[10px] font-bold px-2 py-1 rounded-full ${user.mfaEnabled?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{user.mfaEnabled?'ENABLED':'NOT ENABLED'}</span></div>
+      {!user.mfaEnabled&&!mfaSetup&&<div className="mt-4"><input type="password" value={mfaForm.currentPassword} onChange={e=>setMfaForm({...mfaForm,currentPassword:e.target.value})} className="w-full px-3 py-2.5 border rounded-lg text-sm" placeholder="Current password"/><button type="button" onClick={startMfa} disabled={busy||!mfaForm.currentPassword} className="mt-2 px-4 py-2.5 bg-purple-700 text-white text-sm font-bold rounded-lg disabled:opacity-50">Start authenticator setup</button></div>}
+      {mfaSetup&&<div className="mt-4"><img src={mfaSetup.qrCodeDataUrl} alt="Authenticator setup QR" className="w-56 h-56 mx-auto border rounded-xl"/><details className="text-xs mt-2"><summary>Show manual key</summary><code className="block break-all bg-gray-100 p-2 mt-1">{mfaSetup.manualKey}</code></details><input inputMode="numeric" value={mfaForm.code} onChange={e=>setMfaForm({...mfaForm,code:e.target.value})} className="w-full mt-3 px-3 py-3 border rounded-lg text-center tracking-widest" placeholder="6-digit authenticator code"/><button type="button" onClick={enableMfa} disabled={busy||mfaForm.code.length<6} className="w-full mt-2 py-3 bg-green-600 text-white font-bold rounded-lg disabled:opacity-50">Verify and enable</button></div>}
+      {backupCodes&&<div className="mt-4 bg-gray-950 text-green-300 p-4 rounded-xl"><p className="text-xs text-white mb-2">Save these once-only backup codes offline:</p><div className="grid grid-cols-2 gap-1 font-mono text-xs">{backupCodes.map(item=><span key={item}>{item}</span>)}</div><button type="button" onClick={()=>navigator.clipboard.writeText(backupCodes.join('\n'))} className="w-full mt-3 py-2 bg-white text-gray-900 font-bold rounded">Copy codes</button></div>}
+    </div>
+
+    <div className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><h4 className="font-bold">Google sign-in</h4><p className="text-xs text-gray-500 mt-1">Link only the Google account with the same verified email.</p></div><span className={`h-fit text-[10px] font-bold px-2 py-1 rounded-full ${user.googleLinked?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>{user.googleLinked?'LINKED':'NOT LINKED'}</span></div>{!user.googleLinked&&<div className="mt-4"><GoogleSignInButton onCredential={linkGoogle} onError={message=>setToast({message,type:'error'})} text="continue_with"/></div>}</div>
+  </div>
+}
+
 // Profile Page with Store Name separate from Full Name
 const ProfilePage = () => {
   const { user, updateUser } = useAuth()
   const [form, setForm] = useState({ name: '', phone: '', street: '', city: '', state: '', storeName: '', storeDescription: '', returnPolicy: '', pickupAddress: '' })
-  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '', mfaCode: '' })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
@@ -3700,13 +3785,15 @@ const ProfilePage = () => {
     try {
       const res = await fetch(`${API_URL}/api/auth/password`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-        body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword })
+        body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword, mfaCode: passwordForm.mfaCode })
       })
       const data = await res.json()
       setLoading(false)
       if (data.success) {
-        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
-        setToast({ message: '✓ Password changed successfully', type: 'success' })
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '', mfaCode: '' })
+        if (data.data?.csrfToken) sessionStorage.setItem('csrfToken', data.data.csrfToken)
+        if (data.data?.user) updateUser(data.data.user)
+        setToast({ message: '✓ Password changed and other sessions revoked', type: 'success' })
       } else setToast({ message: data.message || 'Unable to change password', type: 'error' })
     } catch { setLoading(false); setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
@@ -3805,16 +3892,20 @@ const ProfilePage = () => {
               )}
               
               {activeTab === 'security' && (
-                <form onSubmit={handlePasswordChange} className="space-y-4">
+                <div>
+                  <AccountSecurityPanel user={user} updateUser={updateUser} setToast={setToast} />
+                  <form onSubmit={handlePasswordChange} className="space-y-4 border rounded-xl p-4">
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <h4 className="font-bold text-red-900 mb-1">🔐 Protect your account</h4>
                     <p className="text-xs text-red-700">Use a unique password. If this was a demo account, change the old public password immediately.</p>
                   </div>
                   <div><label className="text-sm font-medium text-gray-700 mb-1 block">Current password</label><input type="password" autoComplete="current-password" value={passwordForm.currentPassword} onChange={e => setPasswordForm({...passwordForm, currentPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
-                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">New password</label><input type="password" autoComplete="new-password" minLength={10} value={passwordForm.newPassword} onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="10+ characters with uppercase, lowercase and number" required /></div>
-                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Confirm new password</label><input type="password" autoComplete="new-password" minLength={10} value={passwordForm.confirmPassword} onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
-                  <button type="submit" disabled={loading} className="px-5 py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black disabled:opacity-50">{loading ? 'Changing...' : 'Change Password'}</button>
-                </form>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">New password</label><input type="password" autoComplete="new-password" minLength={12} value={passwordForm.newPassword} onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="12+ characters with uppercase, lowercase, number and symbol" required /></div>
+                  <div><label className="text-sm font-medium text-gray-700 mb-1 block">Confirm new password</label><input type="password" autoComplete="new-password" minLength={12} value={passwordForm.confirmPassword} onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
+                  {user.mfaEnabled && <div><label className="text-sm font-medium text-gray-700 mb-1 block">Authenticator code</label><input inputMode="numeric" autoComplete="one-time-code" value={passwordForm.mfaCode} onChange={e => setPasswordForm({...passwordForm, mfaCode: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="6-digit code" required /></div>}
+                  <button type="submit" disabled={loading} className="px-5 py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black disabled:opacity-50">{loading ? 'Changing...' : 'Change Password & Revoke Other Sessions'}</button>
+                  </form>
+                </div>
               )}
             </div>
           </div>
@@ -3852,7 +3943,10 @@ const InformationPage = ({ type }) => {
         ['Information collected', 'This can include your name, email, phone number, address, account role, listings, chats, orders, reports and basic technical logs.'],
         ['How information is used', 'Information is used to provide the service, calculate delivery, prevent abuse, respond to support requests, review sellers and improve marketplace performance.'],
         ['Information sharing', 'Order details are shared only with the buyer, relevant seller and authorised administrators as needed. We do not publicly display private addresses or bank details.'],
-        ['Security and retention', 'Reasonable technical controls are used, but no online service is risk-free. Information is retained only as needed for operations, disputes and legal obligations.'],
+        ['Service providers', 'FlexiaCart uses carefully selected processors for specific functions, including Google for optional sign-in, Resend for transactional security email, Cloudinary for product images, Flutterwave for enabled checkout methods, MongoDB for application data, and Vercel/Render for hosting. Each provider processes relevant data under its own terms and privacy commitments.'],
+        ['Authentication security', 'Passwords are hashed and are not stored as readable text. Email verification, short-lived security links, secure session cookies and administrator authenticator codes help protect accounts. Authenticator secrets are encrypted, and backup codes are stored only as one-way hashes.'],
+        ['Security and retention', 'Reasonable technical controls are used, but no online service is risk-free. Information is retained only as needed for operations, disputes, security and legal obligations.'],
+
         ['Your choices', 'You may request correction or deletion of eligible personal information through the in-app Support chat. Some transaction or dispute records may need to be retained.']
       ]
     },
@@ -4036,6 +4130,12 @@ function App() {
                       <Route path="/messages" element={<MessagesPage />} />
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
+                      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                      <Route path="/reset-password" element={<ResetPasswordPage />} />
+                      <Route path="/verify-email" element={<VerifyEmailPage />} />
+                      <Route path="/confirm-email-change" element={<ConfirmEmailChangePage />} />
+                      <Route path="/mfa-challenge" element={<MfaChallengePage />} />
+                      <Route path="/mfa-setup" element={<MfaSetupPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/become-seller" element={<BecomeSellerPage />} />
                       <Route path="/about" element={<InformationPage type="about" />} />
