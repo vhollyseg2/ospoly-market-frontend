@@ -76,11 +76,22 @@ const ScrollToTop = () => {
 }
 
 // Auth Context
+const PlatformContext = createContext()
 const AuthContext = createContext()
 const CartContext = createContext()
 const WishlistContext = createContext()
 const NotificationContext = createContext()
 const ChatContext = createContext()
+
+const PlatformProvider = ({ children }) => {
+  const [settings, setSettings] = useState({ marketplaceName: 'FlexiaCart', operatingMode: 'single_merchant', singleMerchantNotice: 'Products are sold and fulfilled directly by FlexiaCart.' })
+  const [loading, setLoading] = useState(true)
+  const refreshSettings = async () => {
+    try { const data = await fetch(`${API_URL}/api/settings/public?ts=${Date.now()}`).then(r => r.json()); if (data.success) setSettings(data.data) } catch {} finally { setLoading(false) }
+  }
+  useEffect(() => { refreshSettings() }, [])
+  return <PlatformContext.Provider value={{ settings, setSettings, loading, refreshSettings, isSingleMerchant: settings.operatingMode === 'single_merchant', isMultiVendor: settings.operatingMode === 'multi_vendor' }}>{children}</PlatformContext.Provider>
+}
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
@@ -384,6 +395,7 @@ const CartProvider = ({ children }) => {
   )
 }
 
+const usePlatform = () => useContext(PlatformContext)
 const useAuth = () => useContext(AuthContext)
 const useCart = () => useContext(CartContext)
 const useWishlist = () => useContext(WishlistContext)
@@ -692,8 +704,9 @@ const WishlistButton = ({ product, className = '' }) => {
 // Safe interim checkout confirmation.
 // Online card/transfer payments remain disabled until verified Flutterwave live payments are approved and enabled.
 const PaymentModal = ({ isOpen, onClose, amount, orderId, orderItems, onSuccess }) => {
+  const { isSingleMerchant } = usePlatform()
   if (!isOpen) return null
-  const sellerNames = [...new Set((orderItems || []).map(item => item?.sellerName || item?.seller?.sellerProfile?.storeName || item?.seller?.name).filter(Boolean))]
+  const sellerNames = isSingleMerchant ? ['FlexiaCart'] : [...new Set((orderItems || []).map(item => item?.sellerName || item?.seller?.sellerProfile?.storeName || item?.seller?.name).filter(Boolean))]
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="order-confirmation-title">
@@ -1021,8 +1034,31 @@ const ProductChat = ({ sellerId, productTitle, productId }) => {
   )
 }
 
+// Direct-retail product questions go to FlexiaCart support rather than external vendors.
+const ProductInquiry = ({ product }) => {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [toast, setToast] = useState(null)
+  const show = () => { if (!user) { sessionStorage.setItem('returnAfterLogin', window.location.pathname); navigate('/login'); return } setOpen(true) }
+  const send = async () => {
+    if (!message.trim()) return
+    setSending(true)
+    try {
+      const data = await fetch(`${API_URL}/api/support/tickets`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ subject: `Product inquiry: ${product.title}`, message: `Product ID: ${product._id}\nProduct: ${product.title}\n\n${message.trim()}`, priority: 'normal' }) }).then(r => r.json())
+      setSending(false)
+      if (data.success) { setToast({ message: 'Question sent to FlexiaCart support', type: 'success' }); setMessage(''); setOpen(false) }
+      else setToast({ message: data.message || 'Unable to send question', type: 'error' })
+    } catch { setSending(false); setToast({ message: 'Unable to connect to support', type: 'error' }) }
+  }
+  return <div>{toast && <Toast {...toast} onClose={() => setToast(null)} />}<button onClick={show} className="mt-4 w-full sm:w-auto px-5 py-3 bg-purple-700 text-white text-sm font-bold rounded-xl hover:bg-purple-800">💬 Ask FlexiaCart About This Product</button>{open && <div className="fixed inset-0 z-[9999] bg-black/55 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-6"><div className="flex justify-between"><div><h3 className="font-black">Ask FlexiaCart</h3><p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.title}</p></div><button onClick={() => setOpen(false)}>✕</button></div><textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} maxLength={2000} placeholder="Ask about availability, sourcing, condition, delivery or warranty..." className="w-full mt-4 border rounded-xl px-4 py-3 text-sm" /><div className="grid grid-cols-2 gap-2 mt-4"><button onClick={() => setOpen(false)} className="py-3 bg-gray-100 rounded-xl font-bold">Cancel</button><button onClick={send} disabled={sending || !message.trim()} className="py-3 bg-purple-700 text-white rounded-xl font-bold disabled:opacity-40">{sending ? 'Sending...' : 'Send Question'}</button></div></div></div>}</div>
+}
+
 // Professional header: account navigation lives in one left drawer; categories stay separate.
 const Header = () => {
+  const { isSingleMerchant } = usePlatform()
   const { user, logout, isAuthenticated } = useAuth()
   const { summary } = useCart()
   const { wishlist } = useWishlist()
@@ -1070,9 +1106,11 @@ const Header = () => {
             <button onClick={() => go('/messages')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-blue-50 text-left"><span className="text-xl">💬</span><span><strong className="block text-sm">Messages</strong><small className="text-gray-500">Buyer and seller conversations</small></span></button>
             <button onClick={() => go('/wishlist')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 text-left"><span className="text-xl">❤️</span><span><strong className="block text-sm">Wishlist</strong><small className="text-gray-500">{wishlist.length} saved item(s)</small></span></button>
 
-            <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Selling</p>
-            {user?.role === 'buyer' && <button onClick={() => go('/become-seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-purple-50 text-purple-900 text-left"><span className="text-xl">🚀</span><span><strong className="block text-sm">Become a Seller</strong><small className="text-purple-700">Open your FlexiaCart store</small></span></button>}
-            {(user?.role === 'seller' || user?.role === 'admin') && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-900 text-left"><span className="text-xl">🏪</span><span><strong className="block text-sm">Seller Dashboard</strong><small className="text-purple-700">Products, orders and wallet</small></span></button>}
+            <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">{isSingleMerchant ? 'FlexiaCart retail' : 'Selling'}</p>
+            {!isSingleMerchant && user?.role === 'buyer' && <button onClick={() => go('/become-seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-purple-50 text-purple-900 text-left"><span className="text-xl">🚀</span><span><strong className="block text-sm">Become a Seller</strong><small className="text-purple-700">Open your FlexiaCart store</small></span></button>}
+            {!isSingleMerchant && user?.role === 'seller' && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-900 text-left"><span className="text-xl">🏪</span><span><strong className="block text-sm">Seller Dashboard</strong><small className="text-purple-700">Products, orders and wallet</small></span></button>}
+            {isSingleMerchant && user?.role === 'seller' && <div className="mx-3 my-2 p-3 bg-amber-50 text-amber-800 rounded-xl text-xs">External seller tools are temporarily paused while FlexiaCart operates in direct retail mode.</div>}
+            {user?.role === 'admin' && <button onClick={() => go('/seller')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-900 text-left"><span className="text-xl">📦</span><span><strong className="block text-sm">{isSingleMerchant ? 'Inventory & Fulfilment' : 'Seller Dashboard'}</strong><small className="text-purple-700">{isSingleMerchant ? 'Products, sourcing and orders' : 'Products, orders and wallet'}</small></span></button>}
             {(user?.role === 'admin' || user?.role === 'moderator') && <button onClick={() => go('/admin')} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-purple-50 text-purple-800 text-left"><span className="text-xl">🛡️</span><span><strong className="block text-sm">{user.role === 'admin' ? 'Admin Dashboard' : 'Moderator Dashboard'}</strong><small className="text-purple-600">Approvals, reports and support</small></span></button>}
           </>}
 
@@ -1096,7 +1134,7 @@ const Header = () => {
       <div className="bg-white border-b border-slate-200"><div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 flex items-center gap-2 sm:gap-4">
         <button onClick={() => setDrawerOpen(true)} className="text-slate-700 hover:text-purple-700 text-2xl w-9 h-10 flex items-center justify-center rounded-xl hover:bg-slate-100" aria-label="Open account menu">☰</button>
         <Link to="/" className="flex items-center gap-2 flex-shrink-0"><span className="w-10 h-10 sm:w-12 sm:h-12"><img src="/logo.svg" alt="FlexiaCart" className="w-full h-full" /></span><span className="hidden lg:block leading-tight"><strong className="text-xl text-slate-950">Flexia<span className="text-purple-700">Cart</span><span className="text-amber-500">.</span></strong><small className="block text-[9px] uppercase tracking-wider text-slate-400">Shop More. Sell Smarter.</small></span></Link>
-        <form onSubmit={handleSearch} className="flex-1 max-w-2xl relative"><div className="flex bg-slate-100 rounded-2xl overflow-hidden border-2 border-purple-200 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-100"><select value={searchCategory} onChange={e => setSearchCategory(e.target.value)} className="hidden md:block max-w-32 bg-slate-200 border-r border-slate-300 px-2 text-xs font-bold text-slate-700 outline-none"><option value="">All</option>{MARKET_CATEGORIES.map(category => <option key={category.slug} value={category.slug}>{category.short}</option>)}</select><input value={searchQuery} onFocus={() => searchQuery.length >= 2 && setSearchOpen(true)} onChange={e => setSearchQuery(e.target.value)} placeholder="Search products, brands and stores..." className="min-w-0 flex-1 px-3 sm:px-4 py-3 text-sm outline-none bg-transparent" /><button className="px-3 sm:px-6 bg-gradient-to-r from-purple-700 to-indigo-600 text-white" aria-label="Search">🔍</button></div>{searchOpen && searchQuery.trim().length >= 2 && <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-[70]">{searchSuggestions.length ? searchSuggestions.map(product => <button type="button" key={product._id} onClick={() => navigate(`/products/${product._id}`)} className="w-full flex items-center gap-3 p-3 border-b last:border-0 hover:bg-purple-50 text-left"><div className="w-11 h-11 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0"><ProductImage product={product} alt={product.title} /></div><div className="min-w-0 flex-1"><p className="text-xs font-bold text-slate-900 truncate">{product.title}</p><p className="text-[10px] text-slate-500 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name} • {product.location || 'Nigeria'}</p></div><strong className="text-xs">₦{product.price?.toLocaleString()}</strong></button>) : <div className="p-5 text-center text-xs text-slate-500">No approved products found.</div>}<button type="submit" className="w-full p-3 bg-slate-50 text-purple-700 text-xs font-bold">View all search results →</button></div>}</form>
+        <form onSubmit={handleSearch} className="flex-1 max-w-2xl relative"><div className="flex bg-slate-100 rounded-2xl overflow-hidden border-2 border-purple-200 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-100"><select value={searchCategory} onChange={e => setSearchCategory(e.target.value)} className="hidden md:block max-w-32 bg-slate-200 border-r border-slate-300 px-2 text-xs font-bold text-slate-700 outline-none"><option value="">All</option>{MARKET_CATEGORIES.map(category => <option key={category.slug} value={category.slug}>{category.short}</option>)}</select><input value={searchQuery} onFocus={() => searchQuery.length >= 2 && setSearchOpen(true)} onChange={e => setSearchQuery(e.target.value)} placeholder="Search products, brands and stores..." className="min-w-0 flex-1 px-3 sm:px-4 py-3 text-sm outline-none bg-transparent" /><button className="px-3 sm:px-6 bg-gradient-to-r from-purple-700 to-indigo-600 text-white" aria-label="Search">🔍</button></div>{searchOpen && searchQuery.trim().length >= 2 && <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-[70]">{searchSuggestions.length ? searchSuggestions.map(product => <button type="button" key={product._id} onClick={() => navigate(`/products/${product._id}`)} className="w-full flex items-center gap-3 p-3 border-b last:border-0 hover:bg-purple-50 text-left"><div className="w-11 h-11 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0"><ProductImage product={product} alt={product.title} /></div><div className="min-w-0 flex-1"><p className="text-xs font-bold text-slate-900 truncate">{product.title}</p><p className="text-[10px] text-slate-500 truncate">{isSingleMerchant ? 'FlexiaCart' : (product.seller?.sellerProfile?.storeName || product.seller?.name)} • {product.location || 'Nigeria'}</p></div><strong className="text-xs">₦{product.price?.toLocaleString()}</strong></button>) : <div className="p-5 text-center text-xs text-slate-500">No approved products found.</div>}<button type="submit" className="w-full p-3 bg-slate-50 text-purple-700 text-xs font-bold">View all search results →</button></div>}</form>
         <div className="flex items-center gap-0.5 sm:gap-2"><Link to="/wishlist" className="hidden sm:flex w-10 h-10 items-center justify-center text-slate-600 hover:text-rose-600 text-xl">♡</Link><Link to="/cart" className="relative w-10 h-10 flex items-center justify-center text-purple-700 text-xl rounded-xl hover:bg-purple-50" aria-label="Cart">🛍️{summary.itemCount > 0 && <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{summary.itemCount}</span>}</Link>{isAuthenticated ? <><NotificationBell dark /><button onClick={() => go('/profile')} className="w-9 h-9 bg-purple-100 border border-purple-300 rounded-xl text-purple-800 font-black" aria-label="Profile">{user?.name?.charAt(0)?.toUpperCase()}</button></> : <Link to="/login" className="ml-1 px-2.5 sm:px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 text-white font-bold rounded-xl text-xs sm:text-sm whitespace-nowrap shadow-md">Log In</Link>}</div>
       </div></div>
 
@@ -1109,6 +1147,7 @@ const Header = () => {
 
 // Product Card with all features
 const ProductCard = ({ product, showFlashDeal = false }) => {
+  const { isSingleMerchant } = usePlatform()
   const { addToCart } = useCart()
   const { user } = useAuth()
   const { isInWishlist } = useWishlist()
@@ -1141,7 +1180,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
   return (
     <>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      {quickViewOpen && <div className="fixed inset-0 z-[9999] bg-[#0B0A16]/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickViewOpen(false)}><div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl grid sm:grid-cols-2" onClick={e => e.stopPropagation()}><div className="aspect-square bg-slate-100"><ProductImage product={product} alt={product.title} /></div><div className="p-6 flex flex-col"><div className="flex justify-between gap-3"><span className="text-[10px] font-black text-purple-700 uppercase tracking-wider">{product.seller?.sellerProfile?.storeName || product.seller?.name}</span><button onClick={() => setQuickViewOpen(false)} className="text-xl text-slate-400">✕</button></div><h2 className="text-xl font-black text-slate-950 mt-3 line-clamp-3">{product.title}</h2><div className="flex items-baseline gap-2 mt-4"><strong className="text-2xl text-purple-700">₦{product.price?.toLocaleString()}</strong>{product.originalPrice > product.price && <span className="text-sm line-through text-slate-400">₦{product.originalPrice?.toLocaleString()}</span>}</div><p className="text-sm text-slate-500 mt-3 line-clamp-3">{product.description || 'Open the full product page for complete details, delivery and seller information.'}</p><div className="mt-auto pt-6 grid grid-cols-2 gap-2"><button onClick={handleAddToCart} disabled={product.stock < 1} className="py-3 bg-gradient-to-r from-purple-700 to-indigo-600 text-white font-bold rounded-xl disabled:opacity-40">Add to Cart</button><button onClick={() => navigate(`/products/${product._id}`)} className="py-3 bg-slate-100 text-slate-800 font-bold rounded-xl">Full Details</button></div></div></div></div>}
+      {quickViewOpen && <div className="fixed inset-0 z-[9999] bg-[#0B0A16]/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickViewOpen(false)}><div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl grid sm:grid-cols-2" onClick={e => e.stopPropagation()}><div className="aspect-square bg-slate-100"><ProductImage product={product} alt={product.title} /></div><div className="p-6 flex flex-col"><div className="flex justify-between gap-3"><span className="text-[10px] font-black text-purple-700 uppercase tracking-wider">{isSingleMerchant ? 'Sold & fulfilled by FlexiaCart' : (product.seller?.sellerProfile?.storeName || product.seller?.name)}</span><button onClick={() => setQuickViewOpen(false)} className="text-xl text-slate-400">✕</button></div><h2 className="text-xl font-black text-slate-950 mt-3 line-clamp-3">{product.title}</h2><div className="flex items-baseline gap-2 mt-4"><strong className="text-2xl text-purple-700">₦{product.price?.toLocaleString()}</strong>{product.originalPrice > product.price && <span className="text-sm line-through text-slate-400">₦{product.originalPrice?.toLocaleString()}</span>}</div><p className="text-sm text-slate-500 mt-3 line-clamp-3">{product.description || 'Open the full product page for complete details, delivery and seller information.'}</p><div className="mt-auto pt-6 grid grid-cols-2 gap-2"><button onClick={handleAddToCart} disabled={product.stock < 1} className="py-3 bg-gradient-to-r from-purple-700 to-indigo-600 text-white font-bold rounded-xl disabled:opacity-40">Add to Cart</button><button onClick={() => navigate(`/products/${product._id}`)} className="py-3 bg-slate-100 text-slate-800 font-bold rounded-xl">Full Details</button></div></div></div></div>}
       <div
         className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 cursor-pointer relative group"
         onClick={() => navigate(`/products/${product._id}`)}
@@ -1205,7 +1244,7 @@ const ProductCard = ({ product, showFlashDeal = false }) => {
           </div>
           
           <div className="flex items-center gap-1 sm:gap-2 mb-1 sm:mb-2 text-xs text-gray-500">
-            <span className="truncate max-w-full">{product.seller?.sellerProfile?.storeName || product.seller?.name}</span>
+            <span className="truncate max-w-full">{isSingleMerchant ? 'Sold & fulfilled by FlexiaCart' : (product.seller?.sellerProfile?.storeName || product.seller?.name)}</span>
             <span className="text-green-600">✓</span>
           </div>
           
@@ -1289,6 +1328,7 @@ const HomePage = () => {
   const [topSelling, setTopSelling] = useState([])
   const [categoryProducts, setCategoryProducts] = useState({})
   const [loading, setLoading] = useState(true)
+  const { isSingleMerchant } = usePlatform()
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
 
@@ -1348,10 +1388,10 @@ const HomePage = () => {
 
             <div className="flex flex-wrap gap-3 mt-5">
               <button onClick={() => navigate('/products')} className="px-6 py-3 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black rounded-xl shadow-lg shadow-purple-900/30">Shop all products →</button>
-              {isAuthenticated && (user?.role === 'seller' || user?.role === 'admin') ? (
+              {isSingleMerchant ? <button onClick={() => navigate('/about')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">How FlexiaCart works</button> : isAuthenticated && (user?.role === 'seller' || user?.role === 'admin') ? (
                 <button onClick={() => navigate('/seller')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">📊 Open seller dashboard</button>
               ) : (
-                <button onClick={() => navigate(isAuthenticated ? (user?.role === 'buyer' ? '/become-seller' : '/seller') : '/register')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">🚀 Start selling</button>
+                <button onClick={() => navigate(isAuthenticated ? '/become-seller' : '/register')} className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-bold rounded-xl backdrop-blur-sm">🚀 Start selling</button>
               )}
             </div>
 
@@ -1434,7 +1474,7 @@ const HomePage = () => {
       <section className="py-10 sm:py-14 bg-gray-950 text-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div><span className="text-purple-400 text-xs font-bold uppercase tracking-widest">Simple and transparent</span><h2 className="text-2xl sm:text-4xl font-black mt-2">From discovery to delivery</h2><p className="text-gray-300 mt-3 max-w-xl">FlexiaCart helps buyers find useful products and helps independent sellers present their stores professionally to customers in every state.</p><div className="flex flex-wrap gap-3 mt-6"><button onClick={() => navigate('/products')} className="px-5 py-3 bg-purple-600 font-bold rounded-xl">Start shopping</button><button onClick={() => navigate(isAuthenticated ? (user?.role === 'buyer' ? '/become-seller' : '/seller') : '/register')} className="px-5 py-3 border border-white/30 font-bold rounded-xl">Become a seller</button></div></div>
+            <div><span className="text-purple-400 text-xs font-bold uppercase tracking-widest">Simple and transparent</span><h2 className="text-2xl sm:text-4xl font-black mt-2">From discovery to delivery</h2><p className="text-gray-300 mt-3 max-w-xl">{isSingleMerchant ? 'FlexiaCart sources, checks and fulfils products directly while the business grows.' : 'FlexiaCart helps buyers find useful products and helps independent sellers present their stores professionally to customers in every state.'}</p><div className="flex flex-wrap gap-3 mt-6"><button onClick={() => navigate('/products')} className="px-5 py-3 bg-purple-600 font-bold rounded-xl">Start shopping</button>{!isSingleMerchant && <button onClick={() => navigate(isAuthenticated ? (user?.role === 'buyer' ? '/become-seller' : '/seller') : '/register')} className="px-5 py-3 border border-white/30 font-bold rounded-xl">Become a seller</button>}</div></div>
             <div className="grid sm:grid-cols-3 gap-3">{[['1', 'Browse', 'Search or explore clear categories and seller locations.'], ['2', 'Compare', 'Check images, condition, delivery price and chat with the seller.'], ['3', 'Receive', 'Track the order and inspect Pay-on-Delivery items before paying.']].map(([number, title, body]) => <div key={number} className="bg-white/5 border border-white/10 p-5 rounded-2xl"><span className="w-9 h-9 bg-purple-600 rounded-full flex items-center justify-center font-black">{number}</span><h3 className="font-bold mt-4">{title}</h3><p className="text-xs text-gray-400 mt-2 leading-relaxed">{body}</p></div>)}</div>
           </div>
         </div>
@@ -1468,6 +1508,7 @@ const HomePage = () => {
 
 // Public, shareable seller storefront backed only by real marketplace records
 const StorePage = () => {
+  const { isSingleMerchant } = usePlatform()
   const sellerId = window.location.pathname.split('/').pop()
   const { user } = useAuth()
   const [data, setData] = useState(null)
@@ -1493,6 +1534,7 @@ const StorePage = () => {
     try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Store link copied', type: 'success' }) } } catch {}
   }
 
+  if (isSingleMerchant) return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-8 rounded-2xl text-center"><span className="text-5xl">🛍️</span><h1 className="text-2xl font-black mt-4">FlexiaCart Direct Retail</h1><p className="text-sm text-gray-500 mt-2">Public vendor stores are paused while FlexiaCart sources and fulfils products directly.</p><button onClick={() => navigate('/products')} className="mt-5 px-6 py-3 bg-purple-700 text-white font-bold rounded-xl">Browse Products</button></div></div>
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
   if (!data) return <div className="min-h-screen flex items-center justify-center text-center"><div><span className="text-6xl">🏪</span><h1 className="text-2xl font-bold mt-4">Store not found</h1><button onClick={() => navigate('/products')} className="mt-4 text-purple-700 font-bold">Browse products</button></div></div>
   const { seller, products, metrics } = data
@@ -1659,6 +1701,7 @@ const ProductsPage = () => {
 
 // Product Detail Page with Reviews and Chat
 const ProductDetailPage = () => {
+  const { isSingleMerchant, settings: platformSettings } = usePlatform()
   const [product, setProduct] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -1882,21 +1925,15 @@ const ProductDetailPage = () => {
                   <button onClick={handleReportProduct} className="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold">⚑ Report listing</button>
                 </div>
                 
-                {/* Chat with Seller */}
-                {product.seller?._id && product.chatEnabled !== false && product.seller?.sellerProfile?.chatEnabled !== false && (
-                  <ProductChat sellerId={product.seller._id} productId={product._id} productTitle={product.title} />
-                )}
+                {isSingleMerchant ? <ProductInquiry product={product} /> : product.seller?._id && product.chatEnabled !== false && product.seller?.sellerProfile?.chatEnabled !== false && <ProductChat sellerId={product.seller._id} productId={product._id} productTitle={product.title} />}
               </div>
               
               {/* Seller identity uses only real marketplace records */}
               <div className="bg-white rounded-xl p-4 sm:p-6">
-                <h3 className="font-bold text-gray-800 mb-3 text-sm sm:text-base">🏪 Sold by</h3>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center"><span className="text-purple-700 font-bold text-xl">{(product.seller?.sellerProfile?.storeName || product.seller?.name)?.charAt(0)}</span></div>
-                  <div className="flex-1 min-w-0"><p className="font-bold text-gray-800 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name}</p><VerificationBadge level={sellerMetrics.verificationLevel} /><p className="text-xs text-gray-500 mt-1">⭐ {Number(product.seller?.sellerProfile?.rating || 0).toFixed(1)} • {sellerMetrics.deliveredSales || 0} delivered • {sellerMetrics.followers || 0} followers</p></div>
-                  <button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded-lg text-xs font-bold hover:bg-purple-200">Visit Store</button>
-                </div>
-                {product.location && <p className="text-sm text-gray-500 mt-3">📍 Ships from {product.location}</p>}
+                <h3 className="font-bold text-gray-800 mb-3 text-sm sm:text-base">🏪 {isSingleMerchant ? 'Sold and fulfilled by FlexiaCart' : 'Sold by'}</h3>
+                {isSingleMerchant ? <div className="flex items-center gap-3"><img src="/logo.svg" alt="FlexiaCart" className="w-12 h-12" /><div className="flex-1"><p className="font-black text-gray-900">FlexiaCart Direct</p><p className="text-xs text-gray-500">We source, check and deliver this product directly.</p></div><VerificationBadge level="identity_verified" /></div> : <div className="flex items-center gap-3"><div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center"><span className="text-purple-700 font-bold text-xl">{(product.seller?.sellerProfile?.storeName || product.seller?.name)?.charAt(0)}</span></div><div className="flex-1 min-w-0"><p className="font-bold text-gray-800 truncate">{product.seller?.sellerProfile?.storeName || product.seller?.name}</p><VerificationBadge level={sellerMetrics.verificationLevel} /><p className="text-xs text-gray-500 mt-1">⭐ {Number(product.seller?.sellerProfile?.rating || 0).toFixed(1)} • {sellerMetrics.deliveredSales || 0} delivered • {sellerMetrics.followers || 0} followers</p></div><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded-lg text-xs font-bold hover:bg-purple-200">Visit Store</button></div>}
+                {product.location && <p className="text-sm text-gray-500 mt-3">📍 Product source location: {product.location}</p>}
+                {isSingleMerchant && <div className="mt-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs p-3 rounded-lg">{platformSettings.singleMerchantNotice}</div>}
               </div>
               
               {/* Description */}
@@ -1976,7 +2013,7 @@ const ProductDetailPage = () => {
             </div>
           </div>
 
-          {sellerProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">More from this seller</h2><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="text-sm font-bold text-purple-700">Visit store →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">{sellerProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
+          {!isSingleMerchant && sellerProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">More from this seller</h2><button onClick={() => navigate(`/stores/${product.seller?._id}`)} className="text-sm font-bold text-purple-700">Visit store →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">{sellerProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
           {similarProducts.length > 0 && <section className="mt-8"><div className="flex items-center justify-between mb-4"><h2 className="text-xl font-black text-gray-900">Similar products</h2><button onClick={() => navigate(`/products?category=${product.category}`)} className="text-sm font-bold text-purple-700">View category →</button></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">{similarProducts.map(item => <ProductCard key={item._id} product={item} />)}</div></section>}
         </div>
       </div>
@@ -1986,6 +2023,7 @@ const ProductDetailPage = () => {
 
 // Cart Page with Dynamic Shipping
 const CartPage = () => {
+  const { isSingleMerchant } = usePlatform()
   const { user } = useAuth()
   const { items, summary, removeFromCart, updateQuantity } = useCart()
   const { addToWishlist } = useWishlist()
@@ -2028,7 +2066,7 @@ const CartPage = () => {
                 <div className="w-20 sm:w-32 h-20 sm:h-32 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><ProductImage product={item.product} alt={item.product?.title} /></div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-gray-800 text-sm sm:text-base mb-1">{item.product?.title}</h3>
-                  <p className="text-xs sm:text-sm text-gray-500 mb-2">Supplier: {item.product?.seller?.name}</p>
+                  <p className="text-xs sm:text-sm text-gray-500 mb-2">{isSingleMerchant ? 'Sold & fulfilled by FlexiaCart' : `Supplier: ${item.product?.seller?.sellerProfile?.storeName || item.product?.seller?.name}`}</p>
                   <div className="flex items-center gap-2">
                     <StarRating rating={item.product?.rating || 0} size="sm" />
                     <button onClick={() => { addToWishlist(item.product); removeFromCart(item.product?._id); setToast({ message: 'Moved to wishlist!', type: 'success' }) }} className="text-xs text-purple-700 hover:underline">Save for later</button>
@@ -2195,6 +2233,7 @@ const CheckoutPage = () => {
 
 // Flutterwave redirect result is never trusted until backend verification succeeds.
 const PaymentCallbackPage = () => {
+  const { isSingleMerchant } = usePlatform()
   const { clearCart } = useCart()
   const navigate = useNavigate()
   const [state, setState] = useState({ loading: true, success: false, message: 'Verifying your payment securely...' })
@@ -2205,13 +2244,14 @@ const PaymentCallbackPage = () => {
     const transactionId = params.get('transaction_id')
     if (status !== 'successful' || !txRef || !transactionId) { setState({ loading: false, success: false, message: status === 'cancelled' ? 'Payment was cancelled. Your order remains unpaid.' : 'Payment was not completed.' }); return }
     fetch(`${API_URL}/api/payments/flutterwave/verify?tx_ref=${encodeURIComponent(txRef)}&transaction_id=${encodeURIComponent(transactionId)}`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json()).then(data => { if (data.success) { clearCart(); setState({ loading: false, success: true, message: 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
+      .then(r => r.json()).then(data => { if (data.success) { clearCart(); setState({ loading: false, success: true, message: isSingleMerchant ? 'Payment verified. FlexiaCart will confirm stock, source, inspect and fulfil your order.' : 'Payment verified. Seller earnings are safely recorded as pending until delivery.' }) } else setState({ loading: false, success: false, message: data.message || 'Payment could not be verified.' }) }).catch(() => setState({ loading: false, success: false, message: 'Could not connect to the verification service.' }))
   }, [])
   return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full rounded-2xl p-8 text-center shadow-xl">{state.loading ? <div className="w-14 h-14 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" /> : <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${state.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{state.success ? '✓' : '✕'}</div>}<h1 className="text-2xl font-black mt-5">{state.loading ? 'Checking payment' : state.success ? 'Payment verified' : 'Payment not verified'}</h1><p className="text-sm text-gray-600 mt-3">{state.message}</p>{!state.loading && <div className="grid grid-cols-2 gap-3 mt-6"><button onClick={() => navigate('/products')} className="py-3 bg-gray-100 font-bold rounded-xl">Shop</button><button onClick={() => navigate('/orders')} className="py-3 bg-purple-600 text-white font-bold rounded-xl">My Orders</button></div>}</div></div>
 }
 
 // My Orders Page with Tracking and Reports
 const MyOrdersPage = () => {
+  const { isSingleMerchant } = usePlatform()
   const { user } = useAuth()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2264,7 +2304,7 @@ const MyOrdersPage = () => {
   }
 
   const confirmDelivery = async orderId => {
-    if (!window.confirm('Confirm that you received and inspected this order? This releases the seller’s pending earnings.')) return
+    if (!window.confirm(isSingleMerchant ? 'Confirm that you received and inspected this FlexiaCart order?' : 'Confirm that you received and inspected this order? This releases the seller’s pending earnings.')) return
     try {
       const data = await fetch(`${API_URL}/api/orders/${orderId}/confirm-delivery`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json())
       if (data.success) { setOrders(current => current.map(order => order._id === orderId ? { ...order, buyerConfirmedDeliveryAt: new Date().toISOString() } : order)); setToast({ message: data.message, type: 'success' }) }
@@ -2339,7 +2379,7 @@ const MyOrdersPage = () => {
                   {order.paymentMethod === 'flutterwave' && order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => retryFlutterwave(order)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded">Retry Flutterwave Payment</button>}
                   {order.paymentStatus !== 'paid' && order.status === 'pending' && <button onClick={() => cancelUnpaidOrder(order)} className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded">Cancel Unpaid Order</button>}
                   {order.status === 'delivered' && <button onClick={() => navigate(`/products/${order.items[0]?.product?._id || order.items[0]?.product}`)} className="px-4 py-2 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200">✍️ Leave Review</button>}
-                  {order.status === 'delivered' && order.paymentStatus === 'paid' && !order.buyerConfirmedDeliveryAt && <button onClick={() => confirmDelivery(order._id)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">✓ Confirm Delivery & Release Seller</button>}
+                  {order.status === 'delivered' && order.paymentStatus === 'paid' && !order.buyerConfirmedDeliveryAt && <button onClick={() => confirmDelivery(order._id)} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700">{isSingleMerchant ? '✓ Confirm Delivery' : '✓ Confirm Delivery & Release Seller'}</button>}
                   {order.status !== 'cancelled' && (
                     <button onClick={() => handleReportIssue(order._id)} className="px-4 py-2 bg-red-50 text-red-600 text-xs font-medium rounded hover:bg-red-100">
                       🚨 Report Issue / Request Refund
@@ -2557,6 +2597,7 @@ const RegisterPage = () => {
 
 // Seller application is a deliberate step after normal account creation.
 const BecomeSellerPage = () => {
+  const { isSingleMerchant } = usePlatform()
   const { user, updateUser } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ storeName: '', description: '', returnPolicy: '', pickupAddress: '' })
@@ -2564,6 +2605,7 @@ const BecomeSellerPage = () => {
   const [message, setMessage] = useState(null)
   useEffect(() => { if (!user) { sessionStorage.setItem('returnAfterLogin', '/become-seller'); navigate('/login') } }, [user])
   if (!user) return null
+  if (isSingleMerchant) return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-8 rounded-2xl text-center"><span className="text-5xl">⏸️</span><h1 className="text-2xl font-black mt-4">Seller applications are paused</h1><p className="text-sm text-gray-500 mt-2">FlexiaCart currently sells and fulfils products directly. Multi-vendor applications will reopen when the administrator switches operating mode.</p><button onClick={() => navigate('/products')} className="mt-5 px-6 py-3 bg-purple-700 text-white font-bold rounded-xl">Shop Products</button></div></div>
   if (user.role === 'seller') return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md w-full p-8 rounded-2xl text-center shadow"><span className="text-5xl">🏪</span><h1 className="text-2xl font-black mt-4">{user.sellerProfile?.isApproved ? 'Your seller store is active' : 'Application under review'}</h1><p className="text-sm text-gray-500 mt-2">{user.sellerProfile?.isApproved ? 'Open your dashboard to manage products and orders.' : 'An admin will review your store details before product listing is enabled.'}</p><button onClick={() => navigate(user.sellerProfile?.isApproved ? '/seller' : '/')} className="mt-5 px-6 py-3 bg-purple-600 text-white font-bold rounded-xl">Continue</button></div></div>
 
   const submit = async e => {
@@ -2581,6 +2623,7 @@ const BecomeSellerPage = () => {
 
 // Seller Dashboard with Analytics, Products, Orders, Wallet & Withdraw
 const SellerDashboard = () => {
+  const { isSingleMerchant } = usePlatform()
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [products, setProducts] = useState([])
@@ -2599,7 +2642,7 @@ const SellerDashboard = () => {
     category: 'phones-accessories', condition: 'new', location: '',
     localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
     pickupAvailable: true, freeShipping: false, chatEnabled: true,
-    warranty: '', returnPolicy: '', pickupLocation: ''
+    warranty: '', returnPolicy: '', pickupLocation: '', supplierName: '', supplierPhone: '', supplierLocation: '', supplierProductCost: '', sourcingCost: '', expectedSourcingDays: '1', stockConfirmed: false, inspectionStatus: 'not_checked'
   })
   const [productSpecs, setProductSpecs] = useState([{ name: '', value: '' }])
   const [productImages, setProductImages] = useState([])
@@ -2608,6 +2651,7 @@ const SellerDashboard = () => {
 
   useEffect(() => {
     if (!user || (user.role !== 'seller' && user.role !== 'admin')) { navigate('/login'); return }
+    if (isSingleMerchant && user.role !== 'admin') { setLoading(false); return }
     Promise.all([
       fetch(`${API_URL}/api/orders/seller/stats`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
       fetch(`${API_URL}/api/products/seller/my-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()),
@@ -2620,7 +2664,7 @@ const SellerDashboard = () => {
       if (walletResult.success) setWalletData(walletResult.data)
       setLoading(false)
     })
-  }, [user, navigate])
+  }, [user, navigate, isSingleMerchant])
 
   // FIXED: Update status without page reload
   const handleUpdateStatus = async (orderId, status) => {
@@ -2757,7 +2801,8 @@ const SellerDashboard = () => {
       condition: product.condition || 'new', location: product.location || '', localDeliveryFee: product.shipping?.localFee ?? '1000',
       nationwideDeliveryFee: product.shipping?.nationwideFee ?? '2500', processingDays: product.shipping?.processingDays ?? '2',
       pickupAvailable: product.shipping?.pickupAvailable !== false, freeShipping: Boolean(product.shipping?.freeShipping), chatEnabled: product.chatEnabled !== false,
-      warranty: product.warranty || '', returnPolicy: product.returnPolicy || '', pickupLocation: product.pickupLocation || ''
+      warranty: product.warranty || '', returnPolicy: product.returnPolicy || '', pickupLocation: product.pickupLocation || '',
+      supplierName: product.supplierInfo?.name || '', supplierPhone: product.supplierInfo?.phone || '', supplierLocation: product.supplierInfo?.location || '', supplierProductCost: product.supplierInfo?.productCost || '', sourcingCost: product.supplierInfo?.sourcingCost || '', expectedSourcingDays: product.supplierInfo?.expectedSourcingDays ?? '1', stockConfirmed: Boolean(product.supplierInfo?.lastStockConfirmedAt), inspectionStatus: product.supplierInfo?.inspectionStatus || 'not_checked'
     })
     setProductSpecs(product.specifications?.length ? product.specifications.map(item => ({ name: item.name || '', value: item.value || '' })) : [{ name: '', value: '' }])
     setProductImages((product.images || []).map((url, index) => ({ existingUrl: url, preview: url, file: null, id: `existing-${index}-${url}` })))
@@ -2770,7 +2815,7 @@ const SellerDashboard = () => {
       category: 'phones-accessories', condition: 'new', location: '',
       localDeliveryFee: '1000', nationwideDeliveryFee: '2500', processingDays: '2',
       pickupAvailable: true, freeShipping: false, chatEnabled: true,
-      warranty: '', returnPolicy: '', pickupLocation: ''
+      warranty: '', returnPolicy: '', pickupLocation: '', supplierName: '', supplierPhone: '', supplierLocation: '', supplierProductCost: '', sourcingCost: '', expectedSourcingDays: '1', stockConfirmed: false, inspectionStatus: 'not_checked'
     })
     setProductSpecs([{ name: '', value: '' }])
     setProductImages([])
@@ -2829,6 +2874,7 @@ const SellerDashboard = () => {
   }
 
   if (!user || (user.role !== 'seller' && user.role !== 'admin')) return null
+  if (isSingleMerchant && user.role !== 'admin') return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white max-w-md p-8 rounded-2xl text-center"><span className="text-5xl">⏸️</span><h1 className="text-2xl font-black mt-4">Seller tools are paused</h1><p className="text-sm text-gray-500 mt-2">FlexiaCart is currently operating as a direct retailer. Your account and store data remain saved for future multi-vendor activation.</p><button onClick={() => navigate('/products')} className="mt-5 px-6 py-3 bg-purple-700 text-white font-bold rounded-xl">Browse Products</button></div></div>
 
   return (
     <>
@@ -2836,16 +2882,14 @@ const SellerDashboard = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-4 sm:mb-6 flex-wrap gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">📊 Seller Dashboard</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">{isSingleMerchant ? '📦 FlexiaCart Inventory & Fulfilment' : '📊 Seller Dashboard'}</h1>
             <div className="flex gap-2">
               {(user?.sellerProfile?.isApproved || user?.role === 'admin') ? (
                 <>
                   <button onClick={() => setShowAddProduct(true)} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 text-sm">
                     ➕ Add Product
                   </button>
-                  <button onClick={() => setShowWithdraw(true)} className="px-4 py-2 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 text-sm">
-                    💰 Withdraw
-                  </button>
+                  {!isSingleMerchant && <button onClick={() => setShowWithdraw(true)} className="px-4 py-2 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 text-sm">💰 Withdraw</button>}
                 </>
               ) : (
                 <span className="px-4 py-2 bg-yellow-100 text-yellow-700 font-bold rounded-lg text-sm">⏳ Awaiting Approval</span>
@@ -2871,14 +2915,11 @@ const SellerDashboard = () => {
               <p className="text-gray-500 text-xs sm:text-sm">Products</p>
               <p className="text-2xl sm:text-3xl font-bold text-purple-700">{products.length}</p>
             </div>
-            <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Wallet</p>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600">₦{(user?.walletBalance || 0).toLocaleString()}</p>
-            </div>
+            {!isSingleMerchant && <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center"><p className="text-gray-500 text-xs sm:text-sm">Wallet</p><p className="text-xl sm:text-2xl font-bold text-blue-600">₦{(walletData.availableBalance || 0).toLocaleString()}</p></div>}
           </div>
 
           {/* Withdraw Modal */}
-          {showWithdraw && (
+          {!isSingleMerchant && showWithdraw && (
             <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
               <div className="bg-white rounded-xl max-w-md w-full p-6">
                 <div className="flex items-center justify-between mb-6">
@@ -3009,6 +3050,8 @@ const SellerDashboard = () => {
                     </div>
                   </section>
 
+                  {isSingleMerchant && user.role === 'admin' && <section className="rounded-xl border-2 border-purple-200 bg-purple-50/50 p-4"><div className="mb-3"><h3 className="font-bold text-purple-950">🔒 Private supplier & profit details</h3><p className="text-xs text-purple-700">Visible only to administrators. Never exposed on product or store pages.</p></div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"><div><label className="text-xs text-gray-600">Supplier name</label><input value={productForm.supplierName} onChange={e => setProductForm({...productForm, supplierName:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Supplier phone</label><input value={productForm.supplierPhone} onChange={e => setProductForm({...productForm, supplierPhone:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Supplier location</label><input value={productForm.supplierLocation} onChange={e => setProductForm({...productForm, supplierLocation:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Product cost (₦)</label><input type="number" min="0" value={productForm.supplierProductCost} onChange={e => setProductForm({...productForm, supplierProductCost:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Sourcing cost (₦)</label><input type="number" min="0" value={productForm.sourcingCost} onChange={e => setProductForm({...productForm, sourcingCost:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Expected sourcing days</label><input type="number" min="0" max="30" value={productForm.expectedSourcingDays} onChange={e => setProductForm({...productForm, expectedSourcingDays:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" /></div><div><label className="text-xs text-gray-600">Inspection status</label><select value={productForm.inspectionStatus} onChange={e => setProductForm({...productForm, inspectionStatus:e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"><option value="not_checked">Not checked</option><option value="pending">Pending</option><option value="passed">Passed</option><option value="failed">Failed</option></select></div><label className="flex items-center gap-2 text-xs text-gray-700 mt-5"><input type="checkbox" checked={productForm.stockConfirmed} onChange={e => setProductForm({...productForm, stockConfirmed:e.target.checked})} /> Supplier stock confirmed now</label><div className="bg-white border rounded-lg p-3"><p className="text-xs text-gray-500">Estimated product margin</p><p className="font-black text-green-700">₦{Math.max(0,(Number(productForm.price)||0)-(Number(productForm.supplierProductCost)||0)-(Number(productForm.sourcingCost)||0)).toLocaleString()}</p></div></div></section>}
+
                   <section className="rounded-xl border border-gray-200 p-4">
                     <div className="flex items-center justify-between mb-3"><div><h3 className="font-bold text-gray-900">📋 Specifications</h3><p className="text-xs text-gray-500">Add factual details buyers can compare.</p></div>{productSpecs.length < 20 && <button type="button" onClick={() => setProductSpecs(current => [...current, { name: '', value: '' }])} className="text-xs font-bold text-purple-700">+ Add row</button>}</div>
                     <div className="space-y-2">{productSpecs.map((spec, index) => <div key={index} className="grid grid-cols-[1fr_1.5fr_auto] gap-2"><input value={spec.name} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} placeholder="e.g. Colour" className="px-3 py-2 border rounded-lg text-sm" /><input value={spec.value} onChange={e => setProductSpecs(current => current.map((item, i) => i === index ? { ...item, value: e.target.value } : item))} placeholder="e.g. Midnight Black" className="px-3 py-2 border rounded-lg text-sm" /><button type="button" onClick={() => setProductSpecs(current => current.length === 1 ? [{ name: '', value: '' }] : current.filter((_, i) => i !== index))} className="px-2 text-red-500">✕</button></div>)}</div>
@@ -3049,7 +3092,7 @@ const SellerDashboard = () => {
               <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📊 Overview</button>
               <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📦 Products ({products.length})</button>
               <button onClick={() => setActiveTab('orders')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'orders' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📝 Orders ({orders.length})</button>
-              <button onClick={() => setActiveTab('wallet')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'wallet' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💰 Wallet</button>
+              {!isSingleMerchant && <button onClick={() => setActiveTab('wallet')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'wallet' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💰 Wallet</button>}
             </div>
             
             <div className="p-4 sm:p-6">
@@ -3060,13 +3103,13 @@ const SellerDashboard = () => {
                     <div className="space-y-2">
                       <button onClick={() => setShowAddProduct(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">➕ Add New Product</button>
                       <button onClick={() => setActiveTab('orders')} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">📦 View Orders</button>
-                      <button onClick={() => setShowWithdraw(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">💰 Withdraw Funds</button>
+                      {!isSingleMerchant && <button onClick={() => setShowWithdraw(true)} className="w-full text-left px-3 py-2 bg-white rounded text-sm hover:bg-gray-50">💰 Withdraw Funds</button>}
                     </div>
                   </div>
                   <div className="p-4 bg-green-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2">📈 Store Performance</h3>
                     <p className="text-sm text-gray-500">Rating: ⭐ {user?.sellerProfile?.rating || 0} | Sales: {user?.sellerProfile?.totalSales || 0} | Status: {user?.sellerProfile?.isApproved ? '✓ Approved' : '⏳ Pending'}</p>
-                    <p className="text-sm text-gray-500 mt-2">Wallet Balance: ₦{(user?.walletBalance || 0).toLocaleString()}</p>
+                    <p className="text-sm text-gray-500 mt-2">{isSingleMerchant ? 'Mode: FlexiaCart direct retail fulfilment' : `Wallet Balance: ₦${(walletData.availableBalance || 0).toLocaleString()}`}</p>
                   </div>
                 </div>
               )}
@@ -3169,6 +3212,7 @@ const SellerDashboard = () => {
 
 // Admin Dashboard with Pending Products, Sellers, Reports
 const AdminDashboard = () => {
+  const { settings: publicSettings, setSettings: setPublicSettings } = usePlatform()
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [pendingProducts, setPendingProducts] = useState([])
@@ -3180,6 +3224,9 @@ const AdminDashboard = () => {
   const [supportTickets, setSupportTickets] = useState([])
   const [adminChats, setAdminChats] = useState([])
   const [moderators, setModerators] = useState([])
+  const [users, setUsers] = useState([])
+  const [userSearch, setUserSearch] = useState('')
+  const [marketplaceSettings, setMarketplaceSettings] = useState(publicSettings)
   const [adminError, setAdminError] = useState('')
   const [backendVersion, setBackendVersion] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -3195,7 +3242,7 @@ const AdminDashboard = () => {
       try {
         setLoading(true)
         setAdminError('')
-        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes] = await Promise.all([
+        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes, settingsRes, usersRes] = await Promise.all([
           fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-products route is unavailable' })),
           fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-sellers route is unavailable' })),
@@ -3206,7 +3253,9 @@ const AdminDashboard = () => {
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/moderators`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { moderators: [] } }),
           fetch(`${API_URL}/api/admin/product-reports`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/withdrawals`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { withdrawals: [] } }),
-          user.role === 'admin' ? fetch(`${API_URL}/api/admin/pending-bank-accounts`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { sellers: [] } })
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/pending-bank-accounts`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { sellers: [] } }),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { settings: publicSettings } }),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { users: [] } })
         ])
         
         if (statsRes.success) setStats(statsRes.data)
@@ -3221,6 +3270,8 @@ const AdminDashboard = () => {
         if (productReportsRes.success) setProductReports(productReportsRes.data.reports || [])
         if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data.withdrawals || [])
         if (banksRes.success) setPendingBanks(banksRes.data.sellers || [])
+        if (settingsRes.success) setMarketplaceSettings(settingsRes.data.settings || publicSettings)
+        if (usersRes.success) setUsers(usersRes.data.users || [])
         if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('8.')) {
           setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
         }
@@ -3348,6 +3399,28 @@ const AdminDashboard = () => {
     } catch { setToast({ message: 'Unable to connect to the server', type: 'error' }) }
   }
 
+  const switchOperatingMode = async operatingMode => {
+    const label = operatingMode === 'single_merchant' ? 'Single Merchant / Direct Retail' : 'Multi-Vendor Marketplace'
+    const warning = operatingMode === 'single_merchant' ? 'This will pause external seller applications, public store actions, seller chat and seller payouts. FlexiaCart administrators will fulfil all orders.' : 'This will reactivate approved seller stores, seller allocations, messaging and withdrawals.'
+    if (!window.confirm(`Switch to ${label}?\n\n${warning}`)) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/settings/operating-mode`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ operatingMode }) }).then(r => r.json())
+      if (data.success) { setMarketplaceSettings(data.data.settings); setPublicSettings(current => ({ ...current, operatingMode: data.data.settings.operatingMode })); setStats(current => ({ ...current, stats: { ...current?.stats, operatingMode } })); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to switch mode', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to settings service', type: 'error' }) }
+  }
+
+  const changeUserStatus = async (target, action) => {
+    const reason = action === 'activate' ? '' : window.prompt(`${action === 'remove' ? 'Removal' : 'Suspension'} reason for ${target.name}:`)
+    if (action !== 'activate' && !reason) return
+    if (action === 'remove' && !window.confirm(`Remove access for ${target.name}? Their orders and audit records will be preserved, but they will no longer be able to sign in.`)) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/users/${target._id}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` }, body: JSON.stringify({ action, reason }) }).then(r => r.json())
+      if (data.success) { setUsers(current => current.map(item => item._id === target._id ? { ...item, ...data.data.user } : item)); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to update user', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to user service', type: 'error' }) }
+  }
+
   const verifySellerBank = async seller => {
     if (!window.confirm(`Confirm that you independently checked ${seller.sellerProfile?.bankAccount?.accountName} / ${seller.sellerProfile?.bankAccount?.accountNumber} at ${seller.sellerProfile?.bankAccount?.bankName}?`)) return
     try {
@@ -3380,7 +3453,8 @@ const AdminDashboard = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6"><h1 className="text-xl sm:text-2xl font-bold text-gray-800">⚙️ {user.role === 'moderator' ? 'Moderator' : 'Admin'} Dashboard</h1><div className="flex items-center gap-2"><button onClick={() => setRefreshKey(key => key + 1)} disabled={loading} className="text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50">↻ Refresh</button><span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Backend v{backendVersion || 'checking'}</span></div></div>
-          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=8`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
+          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=8.2`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
+          <div className={`mb-6 rounded-2xl border-2 p-5 ${marketplaceSettings?.operatingMode === 'single_merchant' ? 'bg-indigo-50 border-indigo-300' : 'bg-emerald-50 border-emerald-300'}`}><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Current operating mode</span><h2 className="text-xl font-black text-gray-900 mt-1">{marketplaceSettings?.operatingMode === 'single_merchant' ? '🛍️ Single Merchant / Direct Retail' : '🏪 Multi-Vendor Marketplace'}</h2><p className="text-sm text-gray-600 mt-1">{marketplaceSettings?.operatingMode === 'single_merchant' ? 'FlexiaCart receives payment, sources the product, checks it and fulfils the customer order directly. External seller payouts are paused.' : 'Approved independent sellers list products, receive allocated earnings and request settlement.'}</p></div>{user.role === 'admin' && <div className="flex flex-wrap gap-2"><button onClick={() => switchOperatingMode('single_merchant')} disabled={marketplaceSettings?.operatingMode === 'single_merchant'} className="px-4 py-2 bg-indigo-700 text-white text-xs font-bold rounded-xl disabled:opacity-35">Use Single Mode</button><button onClick={() => switchOperatingMode('multi_vendor')} disabled={marketplaceSettings?.operatingMode === 'multi_vendor'} className="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-35">Use Multi-Vendor</button></div>}</div></div>
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
@@ -3408,12 +3482,13 @@ const AdminDashboard = () => {
           <div className="bg-white rounded-lg border border-gray-200">
             <div className="flex border-b overflow-x-auto">
               <button onClick={() => setActiveTab('overview')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'overview' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📊 Overview</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('users')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'users' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>👥 Users ({users.length})</button>}
               <button onClick={() => setActiveTab('products')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'products' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📦 Pending Products ({pendingProducts.length})</button>
-              <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>
+              {marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('sellers')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'sellers' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏪 Pending Sellers ({pendingSellers.length})</button>}
               <button onClick={() => setActiveTab('reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'reports' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🚨 Order Reports ({reports.length})</button>
               <button onClick={() => setActiveTab('listing-reports')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'listing-reports' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>⚑ Listing Reports ({productReports.length})</button>
-              {user.role === 'admin' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
-              {user.role === 'admin' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
+              {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
+              {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
               <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💬 Support Chats</button>
               {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
@@ -3431,10 +3506,12 @@ const AdminDashboard = () => {
                   </div>
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2 text-sm sm:text-base">📊 Quick Stats</h3>
-                    <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>FlexiaCart commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>
+                    {marketplaceSettings?.operatingMode === 'single_merchant' ? <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified retail sales: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>Product acquisition cost: ₦{(stats?.stats?.directCostOfGoods || 0).toLocaleString()}</p><p>Sourcing cost: ₦{(stats?.stats?.directSourcingCost || 0).toLocaleString()}</p><p>Gateway fees: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p className="font-bold text-green-700">Estimated retail profit: ₦{(stats?.stats?.directRetailProfit || 0).toLocaleString()}</p></div> : <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>FlexiaCart commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>}
                   </div>
                 </div>
               )}
+
+              {activeTab === 'users' && user.role === 'admin' && <div><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">User Management</h3><p className="text-xs text-gray-500">Suspend, restore or remove access while preserving orders and audit records.</p></div><input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name, email, phone or role..." className="px-4 py-2.5 border rounded-xl text-sm w-full sm:w-80" /></div><div className="space-y-3">{users.filter(item => !userSearch || `${item.name} ${item.email} ${item.phone || ''} ${item.role}`.toLowerCase().includes(userSearch.toLowerCase())).map(item => <div key={item._id} className="border rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-bold text-sm truncate">{item.name}</p><span className="text-[10px] uppercase bg-gray-100 px-2 py-0.5 rounded-full">{item.role}</span><span className={`text-[10px] uppercase px-2 py-0.5 rounded-full ${item.accountStatus === 'active' ? 'bg-green-100 text-green-700' : item.accountStatus === 'suspended' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{item.accountStatus || 'active'}</span></div><p className="text-xs text-gray-500 truncate">{item.email} {item.phone ? `• ${item.phone}` : ''}</p>{item.sellerProfile?.storeName && <p className="text-xs text-purple-700 mt-1">Store: {item.sellerProfile.storeName} • {item.sellerProfile.isApproved ? 'Approved' : 'Pending'}</p>}{item.statusReason && <p className="text-xs text-red-600 mt-1">Reason: {item.statusReason}</p>}</div><div className="flex gap-2 flex-wrap">{item.accountStatus !== 'active' ? <button onClick={() => changeUserStatus(item, 'activate')} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded-lg">Restore Access</button> : <button onClick={() => changeUserStatus(item, 'suspend')} className="px-3 py-2 bg-yellow-100 text-yellow-800 text-xs font-bold rounded-lg">Suspend</button>}<button onClick={() => changeUserStatus(item, 'remove')} disabled={item.accountStatus === 'removed'} className="px-3 py-2 bg-red-600 text-white text-xs font-bold rounded-lg disabled:opacity-35">Remove Access</button></div></div>)}</div></div>}
 
               {activeTab === 'products' && (
                 <div>
@@ -3447,7 +3524,7 @@ const AdminDashboard = () => {
                             <div>
                               <p className="font-bold text-sm">{p.title}</p>
                               <p className="text-xs text-gray-500">₦{p.price?.toLocaleString()} | Stock: {p.stock}</p>
-                              <p className="text-xs text-gray-500">Seller: {p.seller?.name || 'Unknown'}</p>
+                              <p className="text-xs text-gray-500">{marketplaceSettings?.operatingMode === 'single_merchant' ? `Supplier: ${p.supplierInfo?.name || 'Not recorded'} • Cost ₦${(p.supplierInfo?.productCost || 0).toLocaleString()}` : `Seller: ${p.seller?.name || 'Unknown'}`}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -3737,13 +3814,14 @@ const ProfilePage = () => {
 
 // Public information and policy pages. Review with a Nigerian lawyer before live payments.
 const InformationPage = ({ type }) => {
+  const { isSingleMerchant } = usePlatform()
   const pages = {
     about: {
       icon: '🇳🇬', title: 'About FlexiaCart', intro: 'A growing multi-vendor marketplace built for local communities and open to buyers and sellers across Nigeria.',
       sections: [
         ['Our purpose', 'We help local sellers present products professionally, reach customers outside their immediate community and manage enquiries, orders and delivery information in one place.'],
         ['Who can use it', 'Students, staff, families, professionals, independent sellers and shoppers from any Nigerian state may use the marketplace, subject to account and listing rules.'],
-        ['How it works', 'Sellers create listings with images and delivery details. Admins review listings. Buyers compare products, chat with sellers and place orders for local or nationwide delivery.']
+        ['How it works', isSingleMerchant ? 'FlexiaCart lists products, confirms supplier availability, collects or receives verified payment, sources and checks the item, then fulfils local or nationwide delivery.' : 'Sellers create listings with images and delivery details. Admins review listings. Buyers compare products, chat with sellers and place orders for local or nationwide delivery.']
       ]
     },
     terms: {
@@ -3752,7 +3830,7 @@ const InformationPage = ({ type }) => {
         ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
         ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
         ['Orders and payment', 'Until verified Flutterwave payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
-        ['Marketplace role', 'FlexiaCart connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
+        ['Marketplace role', isSingleMerchant ? 'FlexiaCart currently sells and fulfils products directly. Some products may be sourced from approved suppliers after an order is placed. FlexiaCart remains responsible for fulfilment, customer service and refunds.' : 'FlexiaCart connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
         ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
       ]
     },
@@ -3922,6 +4000,7 @@ const Footer = () => {
 // Main App with all providers
 function App() {
   return (
+    <PlatformProvider>
     <AuthProvider>
       <RecentlyViewedProvider>
         <WishlistProvider>
@@ -3979,6 +4058,7 @@ function App() {
         </WishlistProvider>
       </RecentlyViewedProvider>
     </AuthProvider>
+    </PlatformProvider>
   )
 }
 
