@@ -104,12 +104,20 @@ const ChatContext = createContext()
 
 const PlatformProvider = ({ children }) => {
   const [settings, setSettings] = useState({ marketplaceName: 'FlexiaCart', operatingMode: 'single_merchant', singleMerchantNotice: 'Products are sold and fulfilled directly by FlexiaCart.' })
+  const [paymentMode, setPaymentMode] = useState('not-configured')
   const [loading, setLoading] = useState(true)
   const refreshSettings = async () => {
-    try { const data = await fetch(`${API_URL}/api/settings/public?ts=${Date.now()}`).then(r => r.json()); if (data.success) setSettings(data.data) } catch {} finally { setLoading(false) }
+    try {
+      const [settingsResult, healthResult] = await Promise.all([
+        fetch(`${API_URL}/api/settings/public?ts=${Date.now()}`).then(r => r.json()),
+        fetch(`${API_URL}/api/health?ts=${Date.now()}`).then(r => r.json())
+      ])
+      if (settingsResult.success) setSettings(settingsResult.data)
+      if (healthResult.success) setPaymentMode(healthResult.paymentMode || 'not-configured')
+    } catch {} finally { setLoading(false) }
   }
   useEffect(() => { refreshSettings() }, [])
-  return <PlatformContext.Provider value={{ settings, setSettings, loading, refreshSettings, isSingleMerchant: settings.operatingMode === 'single_merchant', isMultiVendor: settings.operatingMode === 'multi_vendor' }}>{children}</PlatformContext.Provider>
+  return <PlatformContext.Provider value={{ settings, setSettings, paymentMode, onlinePaymentsLive: paymentMode === 'live', onlinePaymentsTesting: paymentMode === 'test', loading, refreshSettings, isSingleMerchant: settings.operatingMode === 'single_merchant', isMultiVendor: settings.operatingMode === 'multi_vendor' }}>{children}</PlatformContext.Provider>
 }
 
 const AuthProvider = ({ children }) => {
@@ -797,6 +805,7 @@ const OrderTracker = ({ status }) => {
 // AI-first support with explicit escalation to an admin or moderator
 const SupportChat = () => {
   const { user } = useAuth()
+  const { paymentMode } = usePlatform()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
@@ -813,8 +822,8 @@ const SupportChat = () => {
   const getAIResponse = (message) => {
     const text = message.toLowerCase()
     if (text.includes('track') || text.includes('where is my order')) return 'Open My Orders from your profile menu. The tracker shows Pending → Confirmed → Processing → Shipped → Delivered. If the status has not changed for too long, I can send the order issue to a person.'
-    if (text.includes('refund') || text.includes('return') || text.includes('wrong item') || text.includes('damage')) return 'Open My Orders and choose “Report Issue / Request Refund.” Add a clear explanation and keep photos or delivery evidence. Automatic online refunds are not active during Pay on Delivery, but an admin can review and mediate the report.'
-    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return 'FlexiaCart currently uses Pay on Delivery while verified Flutterwave payment is being prepared. Do not transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
+    if (text.includes('refund') || text.includes('return') || text.includes('wrong item') || text.includes('damage')) return paymentMode === 'live' ? 'Open My Orders and choose “Report Issue / Request Refund.” Keep evidence. Approved online-payment refunds are processed through the original provider or another documented method and recorded by an administrator.' : 'Open My Orders and choose “Report Issue / Request Refund.” Add a clear explanation and keep photos or delivery evidence. Pay-on-Delivery reports are reviewed by an administrator.'
+    if (text.includes('payment') || text.includes('transfer') || text.includes('account') || text.includes('kyc')) return paymentMode === 'live' ? 'Use only the official Flutterwave checkout shown during FlexiaCart checkout, or Pay on Delivery when offered. The backend verifies online payments. Never send money to an account from a screenshot or chat, and never share your OTP, PIN or CVV.' : 'FlexiaCart currently offers Pay on Delivery while online payment is not live for customers. Never transfer to an account from a screenshot or chat, and never share your OTP, PIN or CVV.'
     if (text.includes('sell') || text.includes('seller') || text.includes('product')) return 'Create one normal account first, then choose Become a Seller from the account menu. Submit your store details and wait for approval. After approval, open Seller Dashboard and upload 1–6 clear product images, delivery prices and an accurate description.'
     if (text.includes('delivery') || text.includes('shipping') || text.includes('state')) return 'Each seller enters a local delivery price and a nationwide price. Your final estimate depends on the seller location and your delivery state. For interstate orders, ask for tracked delivery.'
     if (text.includes('scam') || text.includes('fraud') || text.includes('report') || text.includes('threat')) return 'Do not pay or share private codes. Save evidence, report the order, and tap “Talk to a person” below so an admin or moderator can investigate the full conversation.'
@@ -1714,7 +1723,7 @@ const ProductsPage = () => {
 
 // Product Detail Page with Reviews and Chat
 const ProductDetailPage = () => {
-  const { isSingleMerchant, settings: platformSettings } = usePlatform()
+  const { isSingleMerchant, settings: platformSettings, paymentMode } = usePlatform()
   const [product, setProduct] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -1914,7 +1923,7 @@ const ProductDetailPage = () => {
                 <div className="bg-blue-50 p-3 rounded-lg mb-4 flex items-start gap-2">
                   <span className="text-blue-600">🛡️</span>
                   <div className="text-xs text-blue-700 space-y-1">
-                    <p><strong>Safer shopping:</strong> inspect or confirm your order before paying on delivery while verified Flutterwave payments are being prepared.</p>
+                    <p><strong>Safer shopping:</strong> {paymentMode === 'live' ? 'pay only through the official Flutterwave checkout shown at checkout, or inspect before paying when Pay on Delivery is selected.' : 'inspect or confirm your order before paying on delivery. Online payment is not live for customers yet.'}</p>
                     <p>Delivery estimate: ₦{(product.shipping?.localFee || 1000).toLocaleString()} within seller's state; ₦{(product.shipping?.nationwideFee || 2500).toLocaleString()} nationwide.</p>
                   </div>
                 </div>
@@ -2036,7 +2045,7 @@ const ProductDetailPage = () => {
 
 // Cart Page with Dynamic Shipping
 const CartPage = () => {
-  const { isSingleMerchant } = usePlatform()
+  const { isSingleMerchant, paymentMode } = usePlatform()
   const { user } = useAuth()
   const { items, summary, removeFromCart, updateQuantity } = useCart()
   const { addToWishlist } = useWishlist()
@@ -2112,7 +2121,7 @@ const CartPage = () => {
             </div>
             
             <div className="bg-purple-50 p-3 rounded-lg mb-4">
-              <p className="text-xs text-purple-900">🛡️ Current payment method is Pay on Delivery. Inspect or confirm your order before paying.</p>
+              <p className="text-xs text-purple-900">🛡️ {paymentMode === 'live' ? 'Official Flutterwave checkout and Pay on Delivery options are shown at checkout. Never pay through a chat or screenshot.' : 'Pay on Delivery is currently available. Inspect or confirm your order before paying.'}</p>
             </div>
             
             <button onClick={() => navigate('/checkout')} className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 text-sm sm:text-base">
@@ -2905,6 +2914,17 @@ const SellerDashboard = () => {
     }
   }
 
+  const handleListingStatus = async (product, action) => {
+    if (action === 'active' && product.stock < 1) { setToast({ message: 'Edit the product and add stock before activating it', type: 'error' }); return }
+    const promptText = action === 'active' ? 'Reactivate this product for customers?' : action === 'paused' ? 'Pause and hide this product from customers?' : 'Archive this product?'
+    if (!window.confirm(promptText)) return
+    try {
+      const data = await fetch(`${API_URL}/api/products/${product._id}/listing-status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }).then(r => r.json())
+      if (data.success) { setProducts(current => current.map(item => item._id === product._id ? { ...item, ...data.data.product } : item)); setToast({ message: data.message, type: 'success' }) }
+      else setToast({ message: data.message || 'Unable to change listing status', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to listing service', type: 'error' }) }
+  }
+
   const handleDeleteProduct = async (product) => {
     if (!window.confirm(`Delete “${product.title}”? This cannot be undone.`)) return
     try {
@@ -2942,25 +2962,30 @@ const SellerDashboard = () => {
           </div>
           
           {/* Analytics Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 sm:gap-5 mb-3">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Total Orders</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Valid Orders</p>
               <p className="text-2xl sm:text-3xl font-bold text-gray-800">{stats?.stats?.totalOrders || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Revenue</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Verified Revenue</p>
               <p className="text-xl sm:text-2xl font-bold text-green-600">₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Pending</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Open Orders</p>
               <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats?.stats?.pendingOrders || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Products</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Completed</p>
+              <p className="text-2xl sm:text-3xl font-bold text-emerald-600">{stats?.stats?.completedOrders || 0}</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
+              <p className="text-gray-500 text-xs sm:text-sm">Inventory</p>
               <p className="text-2xl sm:text-3xl font-bold text-purple-700">{products.length}</p>
             </div>
             {!isSingleMerchant && <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center"><p className="text-gray-500 text-xs sm:text-sm">Wallet</p><p className="text-xl sm:text-2xl font-bold text-blue-600">₦{(walletData.availableBalance || 0).toLocaleString()}</p></div>}
           </div>
+          <p className="text-[11px] text-gray-500 mb-6">Dashboard metrics exclude sandbox payments, cancelled/refunded orders and records manually excluded by an administrator. Revenue includes only backend-verified live payments; sandbox and legacy/demo payment records never count.</p>
 
           {/* Withdraw Modal */}
           {!isSingleMerchant && showWithdraw && (
@@ -3184,14 +3209,16 @@ const SellerDashboard = () => {
                               <td className="py-4 pr-4 font-bold">₦{p.price?.toLocaleString()}</td>
                               <td className="py-4 pr-4">{p.stock}</td>
                               <td className="py-4 pr-4">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.isApproved ? 'bg-green-100 text-green-700' : p.isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                  {p.isApproved ? '✓ Active' : p.isRejected ? '✕ Needs changes' : '⏳ Pending'}
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.stock <= 0 || p.listingStatus === 'sold_out' ? 'bg-red-100 text-red-700' : p.listingStatus === 'paused' ? 'bg-gray-200 text-gray-700' : p.listingStatus === 'archived' ? 'bg-slate-200 text-slate-700' : p.isApproved ? 'bg-green-100 text-green-700' : p.isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {p.stock <= 0 || p.listingStatus === 'sold_out' ? '● Sold out — hidden' : p.listingStatus === 'paused' ? '⏸ Paused — hidden' : p.listingStatus === 'archived' ? '▣ Archived — hidden' : p.isApproved ? '✓ Active & public' : p.isRejected ? '✕ Needs changes' : '⏳ Pending approval'}
                                 </span>
+                                {(p.stock <= 0 || p.listingStatus === 'sold_out') && <p className="text-[10px] text-red-600 mt-1 max-w-[180px]">Add stock by editing, then choose Activate.</p>}
                                 {p.approvalNote && <p className="text-[10px] text-red-600 mt-1 max-w-[180px]">{p.approvalNote}</p>}
                               </td>
                               <td className="py-4">
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 flex-wrap">
                                   <button onClick={() => openEditProduct(p)} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100">Edit</button>
+                                  {(p.stock <= 0 || ['sold_out','paused','archived'].includes(p.listingStatus)) ? <button onClick={() => handleListingStatus(p, 'active')} disabled={p.stock < 1 || !p.isApproved} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold disabled:opacity-35">Activate</button> : <button onClick={() => handleListingStatus(p, 'paused')} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold">Pause</button>}
                                   <button onClick={() => handleDeleteProduct(p)} className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100">Delete</button>
                                 </div>
                               </td>
@@ -3272,6 +3299,7 @@ const AdminDashboard = () => {
   const [adminChats, setAdminChats] = useState([])
   const [moderators, setModerators] = useState([])
   const [users, setUsers] = useState([])
+  const [dataIntegrity, setDataIntegrity] = useState({ summary: {}, orders: [], products: [] })
   const [userSearch, setUserSearch] = useState('')
   const [marketplaceSettings, setMarketplaceSettings] = useState(publicSettings)
   const [adminError, setAdminError] = useState('')
@@ -3289,7 +3317,7 @@ const AdminDashboard = () => {
       try {
         setLoading(true)
         setAdminError('')
-        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes, settingsRes, usersRes] = await Promise.all([
+        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes, settingsRes, usersRes, integrityRes] = await Promise.all([
           fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-products route is unavailable' })),
           fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-sellers route is unavailable' })),
@@ -3302,7 +3330,8 @@ const AdminDashboard = () => {
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/withdrawals`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { withdrawals: [] } }),
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/pending-bank-accounts`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { sellers: [] } }),
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { settings: publicSettings } }),
-          user.role === 'admin' ? fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { users: [] } })
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { users: [] } }),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/data-integrity`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { summary: {}, orders: [], products: [] } })
         ])
         
         if (statsRes.success) setStats(statsRes.data)
@@ -3319,6 +3348,7 @@ const AdminDashboard = () => {
         if (banksRes.success) setPendingBanks(banksRes.data.sellers || [])
         if (settingsRes.success) setMarketplaceSettings(settingsRes.data.settings || publicSettings)
         if (usersRes.success) setUsers(usersRes.data.users || [])
+        if (integrityRes.success) setDataIntegrity(integrityRes.data || { summary: {}, orders: [], products: [] })
         if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('8.')) {
           setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
         }
@@ -3492,6 +3522,25 @@ const AdminDashboard = () => {
     } catch { setToast({ message: 'Unable to connect to server', type: 'error' }) }
   }
 
+  const runSafeCleanup = async () => {
+    if (!window.confirm('Run safe cleanup? Records will be preserved. Test/cancelled/refunded orders will be excluded from metrics, sold-out products hidden, invalid legacy listings paused, and ratings rebuilt only from verified paid delivered orders.')) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/data-integrity/clean-safe`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }).then(r => r.json())
+      if (data.success) { setToast({ message: `${data.message} Orders excluded: ${data.data.ordersExcluded}; sold out hidden: ${data.data.soldOutHidden}; invalid paused: ${data.data.invalidListingsPaused}.`, type: 'success' }); setRefreshKey(key => key + 1) }
+      else setToast({ message: data.message || 'Cleanup failed', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to cleanup service', type: 'error' }) }
+  }
+
+  const changeOrderMetrics = async (order, action) => {
+    const reason = action === 'exclude' ? window.prompt('Why should this order be excluded from dashboard metrics?') : ''
+    if (action === 'exclude' && !reason) return
+    try {
+      const data = await fetch(`${API_URL}/api/admin/orders/${order._id}/metrics`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, reason }) }).then(r => r.json())
+      if (data.success) { setToast({ message: data.message, type: 'success' }); setRefreshKey(key => key + 1) }
+      else setToast({ message: data.message || 'Unable to update metrics', type: 'error' })
+    } catch { setToast({ message: 'Unable to connect to metrics service', type: 'error' }) }
+  }
+
   if (!user || !['admin', 'moderator'].includes(user.role)) return null
 
   return (
@@ -3500,24 +3549,24 @@ const AdminDashboard = () => {
       <div className="bg-gray-100 min-h-screen py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6"><h1 className="text-xl sm:text-2xl font-bold text-gray-800">⚙️ {user.role === 'moderator' ? 'Moderator' : 'Admin'} Dashboard</h1><div className="flex items-center gap-2"><button onClick={() => setRefreshKey(key => key + 1)} disabled={loading} className="text-xs bg-white border px-3 py-1.5 rounded-lg hover:bg-gray-50">↻ Refresh</button><span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Backend v{backendVersion || 'checking'}</span></div></div>
-          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=8.2`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
+          {adminError && <div className="mb-6 bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl"><p className="font-bold">⚠️ Backend deployment required</p><p className="text-sm mt-1">{adminError}</p><a href={`${API_URL}/api/health?v=8.4`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-sm font-bold underline">Open backend health check</a></div>}
           <div className={`mb-6 rounded-2xl border-2 p-5 ${marketplaceSettings?.operatingMode === 'single_merchant' ? 'bg-indigo-50 border-indigo-300' : 'bg-emerald-50 border-emerald-300'}`}><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Current operating mode</span><h2 className="text-xl font-black text-gray-900 mt-1">{marketplaceSettings?.operatingMode === 'single_merchant' ? '🛍️ Single Merchant / Direct Retail' : '🏪 Multi-Vendor Marketplace'}</h2><p className="text-sm text-gray-600 mt-1">{marketplaceSettings?.operatingMode === 'single_merchant' ? 'FlexiaCart receives payment, sources the product, checks it and fulfils the customer order directly. External seller payouts are paused.' : 'Approved independent sellers list products, receive allocated earnings and request settlement.'}</p></div>{user.role === 'admin' && <div className="flex flex-wrap gap-2"><button onClick={() => switchOperatingMode('single_merchant')} disabled={marketplaceSettings?.operatingMode === 'single_merchant'} className="px-4 py-2 bg-indigo-700 text-white text-xs font-bold rounded-xl disabled:opacity-35">Use Single Mode</button><button onClick={() => switchOperatingMode('multi_vendor')} disabled={marketplaceSettings?.operatingMode === 'multi_vendor'} className="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-35">Use Multi-Vendor</button></div>}</div></div>
           
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Users</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Active Users</p>
               <p className="text-2xl sm:text-3xl font-bold text-gray-800">{stats?.stats?.totalUsers || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Sellers</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Active Sellers</p>
               <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats?.stats?.totalSellers || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Products</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Public Products</p>
               <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats?.stats?.totalProducts || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
-              <p className="text-gray-500 text-xs sm:text-sm">Orders</p>
+              <p className="text-gray-500 text-xs sm:text-sm">Valid Orders</p>
               <p className="text-2xl sm:text-3xl font-bold text-purple-700">{stats?.stats?.totalOrders || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 text-center">
@@ -3537,6 +3586,7 @@ const AdminDashboard = () => {
               {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
               {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
               <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💬 Support Chats</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('integrity')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'integrity' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🧹 Data Integrity</button>}
               {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
             
@@ -3553,10 +3603,19 @@ const AdminDashboard = () => {
                   </div>
                   <div className="p-4 bg-blue-50 rounded-lg">
                     <h3 className="font-bold text-gray-800 mb-2 text-sm sm:text-base">📊 Quick Stats</h3>
-                    {marketplaceSettings?.operatingMode === 'single_merchant' ? <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified retail sales: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>Product acquisition cost: ₦{(stats?.stats?.directCostOfGoods || 0).toLocaleString()}</p><p>Sourcing cost: ₦{(stats?.stats?.directSourcingCost || 0).toLocaleString()}</p><p>Gateway fees: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p className="font-bold text-green-700">Estimated retail profit: ₦{(stats?.stats?.directRetailProfit || 0).toLocaleString()}</p></div> : <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>FlexiaCart commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>}
+                    {marketplaceSettings?.operatingMode === 'single_merchant' ? <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified retail sales: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>Product acquisition cost: ₦{(stats?.stats?.directCostOfGoods || 0).toLocaleString()}</p><p>Sourcing cost: ₦{(stats?.stats?.directSourcingCost || 0).toLocaleString()}</p><p>Gateway fees: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p className="font-bold text-green-700">Estimated retail profit: ₦{(stats?.stats?.directRetailProfit || 0).toLocaleString()}</p><p>Completed valid orders: {stats?.stats?.completedOrders || 0}</p><p>Sold-out inventory: {stats?.stats?.soldOutProducts || 0}</p><p>Excluded audit records: {stats?.stats?.excludedOrders || 0}</p></div> : <div className="space-y-1 text-xs sm:text-sm text-gray-600"><p>Verified payment volume: ₦{(stats?.stats?.totalRevenue || 0).toLocaleString()}</p><p>FlexiaCart commission: ₦{(stats?.stats?.platformCommission || 0).toLocaleString()}</p><p>Gateway fees charged to sellers: ₦{(stats?.stats?.gatewayFees || 0).toLocaleString()}</p><p>Seller pending liability: ₦{(stats?.stats?.sellerPendingLiability || 0).toLocaleString()}</p><p>Seller available liability: ₦{(stats?.stats?.sellerAvailableLiability || 0).toLocaleString()}</p></div>}
                   </div>
                 </div>
               )}
+
+              {activeTab === 'integrity' && user.role === 'admin' && <div>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">Data Integrity & Honest Metrics</h3><p className="text-xs text-gray-500 mt-1">Nothing is silently deleted. Invalid records are excluded from totals while orders and audit history remain preserved.</p></div><button onClick={runSafeCleanup} className="px-4 py-2.5 bg-purple-700 text-white text-sm font-bold rounded-xl">Run Safe Cleanup & Recalculate</button></div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">{[
+                  ['Test orders',dataIntegrity.summary?.testOrders||0],['Cancelled',dataIntegrity.summary?.cancelledOrders||0],['Refunded/voided',dataIntegrity.summary?.refundedOrders||0],['Excluded records',dataIntegrity.summary?.excludedOrders||0],['Unpaid delivered',dataIntegrity.summary?.unpaidDelivered||0],['Legacy paid',dataIntegrity.summary?.legacyPaidOrders||0],['Sold out',dataIntegrity.summary?.soldOutProducts||0],['Legacy images',dataIntegrity.summary?.legacyImageProducts||0],['Invalid prices',dataIntegrity.summary?.invalidPriceProducts||0]
+                ].map(([label,value])=><div key={label} className="border rounded-xl p-3"><p className="text-[11px] text-gray-500">{label}</p><p className="text-2xl font-black">{value}</p></div>)}</div>
+                <h4 className="font-bold mb-3">Orders requiring attention</h4>{dataIntegrity.orders?.length?<div className="space-y-2 mb-7">{dataIntegrity.orders.map(order=><div key={order._id} className="border rounded-xl p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><p className="font-bold text-sm">#{order._id.slice(-8).toUpperCase()} • ₦{order.finalAmount?.toLocaleString()}</p><p className="text-xs text-gray-500">{order.buyer?.name||'Unknown buyer'} • {order.status} • payment {order.paymentStatus} • {order.paymentEnvironment||'legacy'}</p>{order.metricsExclusionReason&&<p className="text-xs text-red-600 mt-1">Excluded: {order.metricsExclusionReason}</p>}</div><div>{order.excludeFromMetrics?<button onClick={()=>changeOrderMetrics(order,'restore')} className="px-3 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg">Restore if valid</button>:<button onClick={()=>changeOrderMetrics(order,'exclude')} className="px-3 py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg">Exclude from metrics</button>}</div></div>)}</div>:<p className="text-sm text-gray-500 mb-7">No suspicious orders detected.</p>}
+                <h4 className="font-bold mb-3">Inventory requiring attention</h4>{dataIntegrity.products?.length?<div className="space-y-2">{dataIntegrity.products.map(product=><div key={product._id} className="border rounded-xl p-3 flex items-center justify-between gap-3"><div><p className="font-bold text-sm">{product.title}</p><p className="text-xs text-gray-500">₦{product.price?.toLocaleString()} • Stock {product.stock} • {product.listingStatus||'active'}</p>{product.images?.some(image=>String(image).startsWith('/uploads/'))&&<p className="text-xs text-red-600">Legacy/missing image must be replaced</p>}</div><button onClick={()=>navigate('/seller')} className="px-3 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg">Open Inventory</button></div>)}</div>:<p className="text-sm text-gray-500">No inventory issues detected.</p>}
+              </div>}
 
               {activeTab === 'users' && user.role === 'admin' && <div><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">User Management</h3><p className="text-xs text-gray-500">Suspend, restore or remove access while preserving orders and audit records.</p></div><input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name, email, phone or role..." className="px-4 py-2.5 border rounded-xl text-sm w-full sm:w-80" /></div><div className="space-y-3">{users.filter(item => !userSearch || `${item.name} ${item.email} ${item.phone || ''} ${item.role}`.toLowerCase().includes(userSearch.toLowerCase())).map(item => <div key={item._id} className="border rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-bold text-sm truncate">{item.name}</p><span className="text-[10px] uppercase bg-gray-100 px-2 py-0.5 rounded-full">{item.role}</span><span className={`text-[10px] uppercase px-2 py-0.5 rounded-full ${item.accountStatus === 'active' ? 'bg-green-100 text-green-700' : item.accountStatus === 'suspended' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{item.accountStatus || 'active'}</span></div><p className="text-xs text-gray-500 truncate">{item.email} {item.phone ? `• ${item.phone}` : ''}</p>{item.sellerProfile?.storeName && <p className="text-xs text-purple-700 mt-1">Store: {item.sellerProfile.storeName} • {item.sellerProfile.isApproved ? 'Approved' : 'Pending'}</p>}{item.statusReason && <p className="text-xs text-red-600 mt-1">Reason: {item.statusReason}</p>}</div><div className="flex gap-2 flex-wrap">{item.accountStatus !== 'active' ? <button onClick={() => changeUserStatus(item, 'activate')} className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded-lg">Restore Access</button> : <button onClick={() => changeUserStatus(item, 'suspend')} className="px-3 py-2 bg-yellow-100 text-yellow-800 text-xs font-bold rounded-lg">Suspend</button>}<button onClick={() => changeUserStatus(item, 'remove')} disabled={item.accountStatus === 'removed'} className="px-3 py-2 bg-red-600 text-white text-xs font-bold rounded-lg disabled:opacity-35">Remove Access</button></div></div>)}</div></div>}
 
@@ -3917,7 +3976,7 @@ const ProfilePage = () => {
 
 // Public information and policy pages. Review with a Nigerian lawyer before live payments.
 const InformationPage = ({ type }) => {
-  const { isSingleMerchant } = usePlatform()
+  const { isSingleMerchant, paymentMode } = usePlatform()
   const pages = {
     about: {
       icon: '🇳🇬', title: 'About FlexiaCart', intro: 'A growing multi-vendor marketplace built for local communities and open to buyers and sellers across Nigeria.',
@@ -3932,7 +3991,7 @@ const InformationPage = ({ type }) => {
       sections: [
         ['Accounts', 'Provide accurate information, protect your password and do not create accounts for fraud, impersonation or prohibited activity.'],
         ['Listings', 'Sellers must own or be authorised to sell listed items. Images, condition, price, stock, location and delivery details must be accurate. Misleading and counterfeit listings may be removed.'],
-        ['Orders and payment', 'Until verified Flutterwave payments are activated, orders use Pay on Delivery. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
+        ['Orders and payment', paymentMode === 'live' ? 'Available payment options are displayed at checkout. Online payments must use the official Flutterwave checkout and are accepted only after backend verification. Pay on Delivery may also be offered. Never pay through a chat or share an OTP, PIN or card details.' : 'Pay on Delivery is currently available while online customer payment is not live. Never transfer to a hard-coded account or share an OTP, PIN or card details with another user.'],
         ['Marketplace role', isSingleMerchant ? 'FlexiaCart currently sells and fulfils products directly. Some products may be sourced from approved suppliers after an order is placed. FlexiaCart remains responsible for fulfilment, customer service and refunds.' : 'FlexiaCart connects buyers and independent sellers. Sellers remain responsible for product legality, accuracy, fulfilment, warranties and delivery commitments.'],
         ['Enforcement', 'Accounts and listings may be restricted while fraud, safety complaints, prohibited items or policy violations are investigated.']
       ]
@@ -3956,7 +4015,7 @@ const InformationPage = ({ type }) => {
         ['Before accepting delivery', 'Check that the item, quantity and visible condition match the listing. For Pay on Delivery, do not pay until you have made a reasonable inspection.'],
         ['Reportable problems', 'Examples include non-delivery, wrong item, counterfeit item, serious undisclosed damage or a product that materially differs from its description.'],
         ['How to report', 'Open My Orders, select Report Issue / Request Refund and describe the problem with clear evidence. Admins can review the order and conversation.'],
-        ['Current payment limitation', 'Automatic online refunds will be added with verified Flutterwave payments. Until then, a report helps document and mediate the issue but is not a guarantee that the platform can reverse a direct or cash payment.'],
+        ['Refund processing', paymentMode === 'live' ? 'Online payment does not make refunds automatic. Submit an order report with evidence. Approved refunds are processed through Flutterwave or another documented method and recorded with a reference.' : 'For Pay on Delivery, an order report documents and supports review, but FlexiaCart cannot automatically reverse a cash payment.'],
         ['Excluded cases', 'Change-of-mind returns, damage after acceptance and issues clearly disclosed in the listing may depend on the seller’s stated policy.']
       ]
     },
@@ -3964,7 +4023,7 @@ const InformationPage = ({ type }) => {
       icon: '🛡️', title: 'Marketplace Safety', intro: 'Use these rules for safer local and interstate transactions.',
       sections: [
         ['Protect your account', 'Never share your password, OTP, transfer PIN, card PIN or CVV. FlexiaCart support will not ask for them.'],
-        ['Pay safely', 'The current method is Pay on Delivery. Do not transfer to an account displayed in a screenshot, chat message or old payment page.'],
+        ['Pay safely', paymentMode === 'live' ? 'Use only the official Flutterwave checkout displayed during checkout, or Pay on Delivery when offered. Do not transfer to an account displayed in a screenshot, chat or old page.' : 'Pay on Delivery is currently available. Do not transfer to an account displayed in a screenshot, chat message or old payment page.'],
         ['Local pickup', 'Meet in a safe public location during daylight, tell someone where you are going and inspect the product before paying.'],
         ['Interstate delivery', 'Confirm seller identity, listing history, delivery method, tracking and return terms. Use tracked logistics where possible.'],
         ['Report suspicious activity', 'Use the order report or support chat for impersonation, counterfeit products, payment pressure, threats or requests to move a transaction outside the platform.']
