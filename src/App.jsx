@@ -278,8 +278,8 @@ const ChatProvider = ({ children }) => {
   const { user } = useContext(AuthContext)
   
   const fetchChats = async () => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) return
+    const token = 'secure-cookie-session'
+    if (!user) return
     try {
       const res = await fetch(`${API_URL}/api/chat/chats`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
@@ -288,8 +288,8 @@ const ChatProvider = ({ children }) => {
   }
   
   const sendMessage = async (recipientId, message, type = 'buyer_to_seller', productId = null) => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) return { success: false, message: 'Please sign in first' }
+    const token = 'secure-cookie-session'
+    if (!user) return { success: false, message: 'Please sign in first' }
     try {
       const res = await fetch(`${API_URL}/api/chat/send`, {
         method: 'POST',
@@ -322,8 +322,8 @@ const CartProvider = ({ children }) => {
   const [summary, setSummary] = useState({ itemCount: 0, subtotal: 0, shipping: 0, total: 0, shippingIsEstimate: true })
   
   const fetchCart = async () => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) return
+    const token = 'secure-cookie-session'
+    if (!user) return
     try {
       const res = await fetch(`${API_URL}/api/cart`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
@@ -335,8 +335,8 @@ const CartProvider = ({ children }) => {
   }
   
   const addToCart = async (productId, quantity = 1) => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) return { success: false, message: 'Please login first' }
+    const token = 'secure-cookie-session'
+    if (!user) return { success: false, message: 'Please login first' }
     try {
       const res = await fetch(`${API_URL}/api/cart/add`, { 
         method: 'POST', 
