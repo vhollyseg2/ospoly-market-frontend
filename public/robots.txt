@@ -8,3 +8,4 @@ Disallow: /messages
 Disallow: /payment/
 
 Sitemap: https://www.flexiacart.top/sitemap.xml
+Sitemap: https://www.flexiacart.top/sitemap-products.xml
