@@ -94,6 +94,28 @@ const ScrollToTop = () => {
   return null
 }
 
+const useDocumentMeta = ({ title, description, canonical, image, type = 'website' }) => {
+  useEffect(() => {
+    if (!title) return
+    const upsert = (selector, attribute, value) => {
+      let element = document.head.querySelector(selector)
+      if (!element) { element = document.createElement('meta'); const match = selector.match(/meta\[(name|property)="([^"]+)"\]/); if (match) element.setAttribute(match[1], match[2]); document.head.appendChild(element) }
+      element.setAttribute(attribute, value)
+    }
+    document.title = title
+    upsert('meta[name="description"]', 'content', description || '')
+    upsert('meta[property="og:title"]', 'content', title)
+    upsert('meta[property="og:description"]', 'content', description || '')
+    upsert('meta[property="og:type"]', 'content', type)
+    upsert('meta[property="og:url"]', 'content', canonical || window.location.href)
+    if (image) upsert('meta[property="og:image"]', 'content', image)
+    let link = document.head.querySelector('link[rel="canonical"]')
+    if (!link) { link = document.createElement('link'); link.rel = 'canonical'; document.head.appendChild(link) }
+    link.href = canonical || window.location.href
+    return () => { document.title = 'FlexiaCart — Shop More. Sell Smarter.' }
+  }, [title, description, canonical, image, type])
+}
+
 // Auth Context
 const PlatformContext = createContext()
 const AuthContext = createContext()
@@ -151,7 +173,7 @@ const AuthProvider = ({ children }) => {
   }
 
   const login = (email, password) => runPrimaryLogin('/api/auth/login', { email, password })
-  const googleLogin = credential => runPrimaryLogin('/api/auth/google', { credential })
+  const googleLogin = (credential, referralCode = '') => runPrimaryLogin('/api/auth/google', { credential, referralCode })
 
   const completeMfaLogin = async (challengeToken, code) => {
     try {
@@ -1590,6 +1612,8 @@ const ProductsPage = () => {
   const category = searchParams.get('category') || ''
   const search = searchParams.get('search') || ''
   const flash = searchParams.get('flash') || ''
+  const selectedCategory = MARKET_CATEGORIES.find(item => item.slug === category)
+  useDocumentMeta({ title: flash ? 'Verified Deals | FlexiaCart' : selectedCategory ? `${selectedCategory.name} | FlexiaCart` : 'Shop Products | FlexiaCart', description: selectedCategory ? `Shop ${selectedCategory.name.toLowerCase()} with accurate stock and delivery details on FlexiaCart.` : 'Browse active, in-stock products on FlexiaCart.', canonical: category ? `https://www.flexiacart.top/products?category=${encodeURIComponent(category)}` : 'https://www.flexiacart.top/products' })
   const seller = searchParams.get('seller') || ''
   const requestedLocation = searchParams.get('location') || ''
 
@@ -1740,6 +1764,13 @@ const ProductDetailPage = () => {
   const navigate = useNavigate()
   const [toast, setToast] = useState(null)
   const id = window.location.pathname.split('/').pop()
+  useDocumentMeta({
+    title: product ? `${product.title} | FlexiaCart` : 'Product | FlexiaCart',
+    description: product?.description ? product.description.slice(0, 160) : 'Shop verified products on FlexiaCart.',
+    canonical: product ? `https://www.flexiacart.top/products/${product._id}` : window.location.href,
+    image: product ? getProductImage(product) : '',
+    type: 'product'
+  })
 
   useEffect(() => {
     fetch(`${API_URL}/api/products/${id}`).then(r => r.json()).then(d => { 
@@ -1770,9 +1801,16 @@ const ProductDetailPage = () => {
     else setToast({ message: result?.message || 'Failed', type: 'error' })
   }
 
-  const handleShareProduct = async () => {
-    const share = { title: product.title, text: `Check out ${product.title} on FlexiaCart for ₦${product.price?.toLocaleString()}`, url: window.location.href }
-    try { if (navigator.share) await navigator.share(share); else { await navigator.clipboard.writeText(share.url); setToast({ message: 'Product link copied', type: 'success' }) } } catch {}
+  const handleShareProduct = async (channel = 'native') => {
+    const shareUrl = `${window.location.origin}/share/product/${product._id}`
+    const text = `Check out ${product.title} on FlexiaCart for ₦${product.price?.toLocaleString()}`
+    fetch(`${API_URL}/api/marketing/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: product._id, channel, source: 'product_page' }) }).catch(() => {})
+    try {
+      if (channel === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${shareUrl}`)}`, '_blank', 'noopener,noreferrer')
+      else if (channel === 'copy') { await navigator.clipboard.writeText(shareUrl); setToast({ message: 'Product share link copied', type: 'success' }) }
+      else if (navigator.share) await navigator.share({ title: product.title, text, url: shareUrl })
+      else { await navigator.clipboard.writeText(shareUrl); setToast({ message: 'Product share link copied', type: 'success' }) }
+    } catch {}
   }
 
   const handleReportProduct = async () => {
@@ -1943,7 +1981,7 @@ const ProductDetailPage = () => {
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
                   <WishlistButton product={product} />
                   <span className="text-sm text-gray-500 mr-2">Wishlist</span>
-                  <button onClick={handleShareProduct} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold">↗ Share</button>
+                  <button onClick={() => handleShareProduct('native')} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold">↗ Share</button><button onClick={() => handleShareProduct('whatsapp')} className="px-3 py-2 bg-green-50 text-green-700 rounded-lg text-xs font-bold">WhatsApp</button><button onClick={() => handleShareProduct('copy')} className="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold">Copy link</button>
                   <button onClick={handleReportProduct} className="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold">⚑ Report listing</button>
                 </div>
                 
@@ -2565,7 +2603,9 @@ const LoginPage = () => {
 const RegisterPage = () => {
   const { register, googleLogin, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', phone: '', referralCode: '' })
+  const referralFromUrl = new URLSearchParams(window.location.search).get('ref') || sessionStorage.getItem('pendingReferralCode') || ''
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', phone: '', referralCode: referralFromUrl.toUpperCase() })
+  useEffect(() => { if (referralFromUrl) sessionStorage.setItem('pendingReferralCode', referralFromUrl.toUpperCase()) }, [referralFromUrl])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   if (user) { window.location.href = '/'; return null }
@@ -2574,9 +2614,9 @@ const RegisterPage = () => {
     if (form.password !== form.confirmPassword) return setError('Passwords do not match')
     if (form.password.length < 12 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/\d/.test(form.password) || !/[^A-Za-z0-9]/.test(form.password)) return setError('Use 12+ characters with uppercase, lowercase, a number and a symbol')
     setLoading(true); const result = await register({ ...form, confirmPassword: undefined }); setLoading(false)
-    if (result.success) { sessionStorage.setItem('verificationEmail', form.email); navigate('/verify-email') } else setError(result.message || 'Registration failed')
+    if (result.success) { sessionStorage.removeItem('pendingReferralCode'); sessionStorage.setItem('verificationEmail', form.email); navigate('/verify-email') } else setError(result.message || 'Registration failed')
   }
-  const handleGoogle = async credential => { setError(''); setLoading(true); const result = await googleLogin(credential); setLoading(false); if (storeAuthChallenge(result, navigate)) return; if (result.success) navigate('/'); else setError(result.message || 'Google registration failed') }
+  const handleGoogle = async credential => { setError(''); setLoading(true); const result = await googleLogin(credential, form.referralCode); setLoading(false); if (storeAuthChallenge(result, navigate)) return; if (result.success) { sessionStorage.removeItem('pendingReferralCode'); navigate('/') } else setError(result.message || 'Google registration failed') }
   return <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"><div style={{ backgroundColor: colors.primary }} className="p-8 text-center"><h1 className="text-2xl font-bold text-white">Create Account</h1><p className="text-purple-100 text-sm mt-1">Verified access to FlexiaCart</p></div><div className="p-6">
     {error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm text-center">⚠️ {error}</div>}
     <GoogleSignInButton onCredential={handleGoogle} onError={setError} text="signup_with" />
@@ -3300,6 +3340,7 @@ const AdminDashboard = () => {
   const [moderators, setModerators] = useState([])
   const [users, setUsers] = useState([])
   const [dataIntegrity, setDataIntegrity] = useState({ summary: {}, orders: [], products: [] })
+  const [marketingData, setMarketingData] = useState({ shares30Days: 0, shareChannels: [], topShared: [], referredSignups: 0, verifiedReferralBuyers: 0, activeProducts: 0 })
   const [userSearch, setUserSearch] = useState('')
   const [marketplaceSettings, setMarketplaceSettings] = useState(publicSettings)
   const [adminError, setAdminError] = useState('')
@@ -3317,7 +3358,7 @@ const AdminDashboard = () => {
       try {
         setLoading(true)
         setAdminError('')
-        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes, settingsRes, usersRes, integrityRes] = await Promise.all([
+        const [statsRes, productsRes, sellersRes, reportsRes, ticketsRes, chatsRes, healthRes, moderatorsRes, productReportsRes, withdrawalsRes, banksRes, settingsRes, usersRes, integrityRes, marketingRes] = await Promise.all([
           fetch(`${API_URL}/api/admin/dashboard`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })),
           fetch(`${API_URL}/api/admin/pending-products`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-products route is unavailable' })),
           fetch(`${API_URL}/api/admin/pending-sellers`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false, message: 'Pending-sellers route is unavailable' })),
@@ -3331,7 +3372,8 @@ const AdminDashboard = () => {
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/pending-bank-accounts`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { sellers: [] } }),
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { settings: publicSettings } }),
           user.role === 'admin' ? fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { users: [] } }),
-          user.role === 'admin' ? fetch(`${API_URL}/api/admin/data-integrity`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { summary: {}, orders: [], products: [] } })
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/data-integrity`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: { summary: {}, orders: [], products: [] } }),
+          user.role === 'admin' ? fetch(`${API_URL}/api/admin/marketing`, { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }).then(r => r.json()).catch(() => ({ success: false })) : Promise.resolve({ success: true, data: {} })
         ])
         
         if (statsRes.success) setStats(statsRes.data)
@@ -3349,6 +3391,7 @@ const AdminDashboard = () => {
         if (settingsRes.success) setMarketplaceSettings(settingsRes.data.settings || publicSettings)
         if (usersRes.success) setUsers(usersRes.data.users || [])
         if (integrityRes.success) setDataIntegrity(integrityRes.data || { summary: {}, orders: [], products: [] })
+        if (marketingRes.success) setMarketingData(marketingRes.data || {})
         if (!productsRes.success || !sellersRes.success || !String(healthRes.version || '').startsWith('8.')) {
           setAdminError(`Admin approval services are not running on the current backend (detected version: ${healthRes.version || 'unknown'}). Render must deploy the latest backend commit before pending products and sellers can appear.`)
         }
@@ -3586,6 +3629,7 @@ const AdminDashboard = () => {
               {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('banks')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'banks' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🏦 Bank Checks ({pendingBanks.length})</button>}
               {user.role === 'admin' && marketplaceSettings?.operatingMode === 'multi_vendor' && <button onClick={() => setActiveTab('withdrawals')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'withdrawals' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💸 Withdrawals ({withdrawals.filter(item => item.status === 'requested').length})</button>}
               <button onClick={() => setActiveTab('chats')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'chats' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>💬 Support Chats</button>
+              {user.role === 'admin' && <button onClick={() => setActiveTab('marketing')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'marketing' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>📣 Marketing</button>}
               {user.role === 'admin' && <button onClick={() => setActiveTab('integrity')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'integrity' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🧹 Data Integrity</button>}
               {user.role === 'admin' && <button onClick={() => setActiveTab('team')} className={`px-4 sm:px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'team' ? 'text-purple-700 border-b-2 border-purple-700' : 'text-gray-500'}`}>🛡️ Moderators ({moderators.length})</button>}
             </div>
@@ -3607,6 +3651,13 @@ const AdminDashboard = () => {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'marketing' && user.role === 'admin' && <div>
+                <div className="mb-5"><h3 className="font-bold text-gray-900">Organic Growth & Genuine Attribution</h3><p className="text-xs text-gray-500 mt-1">Private analytics record real share-button actions and referral connections. FlexiaCart does not publish fake popularity or sales claims.</p></div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"><div className="border rounded-xl p-4"><p className="text-xs text-gray-500">Product shares (30 days)</p><p className="text-3xl font-black text-purple-700">{marketingData.shares30Days||0}</p></div><div className="border rounded-xl p-4"><p className="text-xs text-gray-500">Tracked signups</p><p className="text-3xl font-black text-blue-700">{marketingData.referredSignups||0}</p></div><div className="border rounded-xl p-4"><p className="text-xs text-gray-500">Referral buyers with live payment</p><p className="text-3xl font-black text-green-700">{marketingData.verifiedReferralBuyers||0}</p></div><div className="border rounded-xl p-4"><p className="text-xs text-gray-500">Active public products</p><p className="text-3xl font-black">{marketingData.activeProducts||0}</p></div></div>
+                <div className="grid lg:grid-cols-2 gap-5"><section><h4 className="font-bold mb-3">Share channels (30 days)</h4>{marketingData.shareChannels?.length?<div className="space-y-2">{marketingData.shareChannels.map(item=><div key={item.channel} className="border rounded-lg p-3 flex justify-between"><span className="capitalize">{item.channel}</span><strong>{item.count}</strong></div>)}</div>:<p className="text-sm text-gray-500">No product shares recorded yet.</p>}</section><section><h4 className="font-bold mb-3">Most shared products (30 days)</h4>{marketingData.topShared?.length?<div className="space-y-2">{marketingData.topShared.map(item=><div key={item._id} className="border rounded-lg p-3 flex justify-between gap-3"><span className="text-sm">{item.product?.title||'Removed product'}</span><strong>{item.shares}</strong></div>)}</div>:<p className="text-sm text-gray-500">No product share activity yet.</p>}</section></div>
+                <div className="mt-6 bg-blue-50 border border-blue-200 p-4 rounded-xl text-xs text-blue-800"><strong>SEO tools:</strong> active products and categories are included in the dynamic sitemap at <a className="underline font-bold" href="/sitemap-products.xml" target="_blank" rel="noreferrer">/sitemap-products.xml</a>. Product share links provide real Open Graph previews for WhatsApp and social platforms.</div>
+              </div>}
 
               {activeTab === 'integrity' && user.role === 'admin' && <div>
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5"><div><h3 className="font-bold text-gray-900">Data Integrity & Honest Metrics</h3><p className="text-xs text-gray-500 mt-1">Nothing is silently deleted. Invalid records are excluded from totals while orders and audit history remain preserved.</p></div><button onClick={runSafeCleanup} className="px-4 py-2.5 bg-purple-700 text-white text-sm font-bold rounded-xl">Run Safe Cleanup & Recalculate</button></div>
@@ -3909,7 +3960,7 @@ const ProfilePage = () => {
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
                     <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded focus:border-purple-600 focus:outline-none text-sm" placeholder="09051103883" />
                   </div>
-                  {user.referralCode && <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg"><p className="text-xs text-purple-700">Your referral code</p><div className="flex items-center justify-between gap-2 mt-1"><strong className="text-purple-900 tracking-wider">{user.referralCode}</strong><button type="button" onClick={() => { navigator.clipboard.writeText(user.referralCode); setToast({ message: 'Referral code copied', type: 'success' }) }} className="text-xs font-bold text-purple-700">Copy</button></div><p className="text-[10px] text-purple-600 mt-1">Rewards activate only after a referred user completes a verified paid order.</p></div>}
+                  {user.referralCode && <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg"><p className="text-xs text-purple-700">Your tracked referral link</p><div className="flex items-center justify-between gap-2 mt-1"><strong className="text-purple-900 tracking-wider">{user.referralCode}</strong><div className="flex gap-2"><button type="button" onClick={() => { navigator.clipboard.writeText(`https://www.flexiacart.top/register?ref=${user.referralCode}`); setToast({ message: 'Referral link copied', type: 'success' }) }} className="text-xs font-bold text-purple-700">Copy link</button><button type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Join FlexiaCart: https://www.flexiacart.top/register?ref=${user.referralCode}`)}`, '_blank', 'noopener,noreferrer')} className="text-xs font-bold text-green-700">WhatsApp</button></div></div><p className="text-[10px] text-purple-600 mt-1">Referral tracking is active. No automatic cash reward is promised unless FlexiaCart publishes a programme with clear terms.</p></div>}
                   <button type="submit" disabled={loading} className="px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm sm:text-base">{loading ? 'Updating...' : '✓ Update Profile'}</button>
                 </form>
               )}
